@@ -1,0 +1,50 @@
+{
+	"name": "n8n-nodes-sql-chat-memory",
+	"version": "0.1.0",
+	"description": "Read-only AI Chat Memory for n8n that loads conversation history from PostgreSQL via a user-defined SQL query.",
+	"license": "MIT",
+	"homepage": "https://github.com/example/n8n-nodes-sql-chat-memory",
+	"keywords": [
+		"n8n-community-node-package"
+	],
+	"author": {
+		"name": "",
+		"email": ""
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/example/n8n-nodes-sql-chat-memory.git"
+	},
+	"main": "index.js",
+	"scripts": {
+		"build": "tsc && npm run copy:icons",
+		"copy:icons": "cp nodes/SqlChatMemory/*.svg dist/nodes/SqlChatMemory/",
+		"dev": "tsc --watch",
+		"lint": "eslint nodes --ext .ts",
+		"lint:fix": "eslint nodes --ext .ts --fix",
+		"prepublishOnly": "npm run build"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"credentials": [],
+		"nodes": [
+			"dist/nodes/SqlChatMemory/SqlChatMemory.node.js"
+		]
+	},
+	"dependencies": {
+		"@langchain/core": "^1.2.8",
+		"pg": "^8.13.1"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"@types/pg": "^8.11.0",
+		"n8n-workflow": "^2.40.0",
+		"typescript": "~5.9.2"
+	}
+}
