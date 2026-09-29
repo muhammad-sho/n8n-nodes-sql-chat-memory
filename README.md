@@ -63,3 +63,4 @@ npm run build
 3. Bump the version in `package.json` for every release (npm rejects re-publishing an existing version).
 4. Create a GitHub **Release** (tags like `v0.1.0`). Publishing is triggered automatically when a Release is published and runs `npm publish --access public` using `NPM_TOKEN`.
 5. After the workflow succeeds, install in n8n via **Settings → Community nodes → Install** with the package name `n8n-nodes-sql-chat-memory`.
+# n8n-nodes-sql-chat-memory
