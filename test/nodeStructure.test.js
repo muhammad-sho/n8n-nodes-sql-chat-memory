@@ -1,0 +1,114 @@
+'use strict';
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { SqlChatMemory } = require('../dist/nodes/SqlChatMemory/SqlChatMemory.node.js');
+const { SqlChatMemoryV1 } = require('../dist/nodes/SqlChatMemory/SqlChatMemoryV1.node.js');
+const { SqlChatMemoryV11 } = require('../dist/nodes/SqlChatMemory/SqlChatMemoryV11.node.js');
+
+function collectDynamicRefs(properties, refs = { loadOptions: new Set(), search: new Set() }) {
+	for (const property of properties) {
+		const method = property.typeOptions?.loadOptionsMethod;
+		if (method) refs.loadOptions.add(method);
+		for (const mode of property.modes ?? []) {
+			const search = mode.typeOptions?.searchListMethod;
+			if (search) refs.search.add(search);
+		}
+		for (const option of property.options ?? []) {
+			if (option.values) collectDynamicRefs(option.values, refs);
+		}
+	}
+	return refs;
+}
+
+function collectActions(properties, actions = new Set()) {
+	for (const property of properties) {
+		const action = property.typeOptions?.buttonConfig?.action;
+		if (typeof action === 'string') actions.add(action);
+		for (const option of property.options ?? []) {
+			if (option.values) collectActions(option.values, actions);
+		}
+	}
+	return actions;
+}
+
+describe('versioned wrapper', () => {
+	it('exposes v1 and v1.1 with the same node name', () => {
+		const wrapper = new SqlChatMemory();
+		assert.equal(wrapper.getNodeType(1).description.version, 1);
+		assert.equal(wrapper.getNodeType(1.1).description.version, 1.1);
+		assert.equal(wrapper.getNodeType(1).description.name, 'sqlChatMemory');
+		assert.equal(wrapper.getNodeType(1.1).description.name, 'sqlChatMemory');
+		assert.equal(wrapper.getLatestVersion(), 1.1);
+	});
+});
+
+describe('V1 (frozen as published in 0.1.0)', () => {
+	const description = new SqlChatMemoryV1().description;
+
+	it('is a pure AI sub-node with the SQL field only', () => {
+		assert.deepEqual(description.inputs, []);
+		assert.deepEqual(description.outputs, ['ai_memory']);
+		assert.deepEqual(description.outputNames, ['Memory']);
+		assert.ok(description.credentials.some((c) => c.name === 'postgres' && c.required));
+		const names = description.properties.map((p) => p.name);
+		assert.deepEqual(names, ['connectionHintNotice', 'query', 'readOnlyNotice']);
+		const query = description.properties.find((p) => p.name === 'query');
+		assert.equal(query.type, 'string');
+		assert.equal(query.required, true);
+		assert.ok(!query.noDataExpression, 'query keeps expression support');
+	});
+
+	it('has supplyData but no execute/methods/mode', () => {
+		const node = new SqlChatMemoryV1();
+		assert.equal(typeof node.supplyData, 'function');
+		assert.equal(node.execute, undefined);
+		assert.equal(node.methods, undefined);
+	});
+});
+
+describe('V11', () => {
+	const node = new SqlChatMemoryV11();
+	const description = node.description;
+
+	it('has Main + Memory outputs and both entry points', () => {
+		assert.deepEqual(description.inputs, ['main']);
+		assert.deepEqual(description.outputs, ['main', 'ai_memory']);
+		assert.deepEqual(description.outputNames, ['Preview', 'Memory']);
+		assert.equal(typeof node.execute, 'function');
+		assert.equal(typeof node.supplyData, 'function');
+	});
+
+	it('defaults new nodes to Table Mapping mode', () => {
+		const mode = description.properties.find((p) => p.name === 'mode');
+		assert.ok(mode);
+		assert.equal(mode.default, 'table');
+	});
+
+	it('shows one copy button per mode page', () => {
+		const mappingButton = description.properties.find((p) => p.name === 'copyMappingPrompt');
+		const sqlButton = description.properties.find((p) => p.name === 'copySqlPrompt');
+		assert.equal(mappingButton.type, 'button');
+		assert.equal(sqlButton.type, 'button');
+		assert.deepEqual(mappingButton.displayOptions.show, { mode: ['table'] });
+		assert.deepEqual(sqlButton.displayOptions.show, { mode: ['sql'] });
+		assert.equal(mappingButton.typeOptions.buttonConfig.action, 'buildMappingPrompt');
+		assert.equal(sqlButton.typeOptions.buttonConfig.action, 'buildSqlPrompt');
+	});
+
+	it('every referenced dynamic method exists (n8n CI guard equivalent)', () => {
+		const refs = collectDynamicRefs(description.properties);
+		const actions = collectActions(description.properties);
+		for (const name of refs.loadOptions) {
+			assert.equal(typeof node.methods.loadOptions[name], 'function', `loadOptions.${name}`);
+		}
+		for (const name of refs.search) {
+			assert.equal(typeof node.methods.listSearch[name], 'function', `listSearch.${name}`);
+		}
+		for (const name of actions) {
+			assert.equal(typeof node.methods.actionHandler[name], 'function', `actionHandler.${name}`);
+		}
+		assert.ok(refs.loadOptions.size > 0 && refs.search.size > 0 && actions.size > 0);
+	});
+});
