@@ -22,7 +22,8 @@ describe('buildMappingPrompt', () => {
 		assert.match(prompt, /message \(CHARACTER VARYING/);
 		assert.match(prompt, /sent, received/);
 		assert.match(prompt, /Role Mappings/);
-		assert.match(prompt, /Message Parts/);
+		assert.match(prompt, /Content Template/);
+		assert.match(prompt, /Content Lookup/);
 		assert.match(prompt, /Ordering Column/);
 		assert.match(prompt, /Select Rows filter/);
 	});

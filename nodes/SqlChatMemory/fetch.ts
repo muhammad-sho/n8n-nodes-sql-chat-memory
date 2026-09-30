@@ -16,7 +16,7 @@ import {
 	withPgClient,
 	type Queryable,
 } from './db';
-import { mapTableRows, rowsToMessages, toText } from './messageMapper';
+import { mapTableRows, rowsToMessages, toText, extractTemplateNames } from './messageMapper';
 import {
 	buildHistoryQuery,
 	buildLookupQuery,
@@ -26,7 +26,7 @@ import {
 } from './queryBuilder';
 import type {
 	ChatRole,
-	ContentPart,
+	ContentLookup,
 	DbRow,
 	PostgresCredentials,
 	RoleMapping,
@@ -105,7 +105,8 @@ interface TableParams {
 	roleColumnSelected: string;
 	explicitRoles: RoleMapping[];
 	contentMode: 'auto' | 'custom';
-	parts: ContentPart[];
+	template: string;
+	lookups: ContentLookup[];
 }
 
 function readTableParams(ctx: FetchContext, itemIndex: number): TableParams {
@@ -135,20 +136,16 @@ function readTableParams(ctx: FetchContext, itemIndex: number): TableParams {
 		: [];
 
 	const contentMode = String(get('contentMode', 'auto') ?? 'auto') as 'auto' | 'custom';
-	const partsRaw = get('contentParts', {}) as { parts?: Array<Record<string, unknown>> };
-	const parts: ContentPart[] = Array.isArray(partsRaw?.parts)
-		? partsRaw.parts.map((entry) => ({
-				source: (String(entry.source ?? 'column') === 'lookup' ? 'lookup' : 'column') as
-					| 'column'
-					| 'lookup',
-				column: String(entry.column ?? ''),
-				prefix: String(entry.prefix ?? ''),
-				suffix: String(entry.suffix ?? ''),
-				fallback: String(entry.fallback ?? ''),
+	const template = String(get('contentTemplate', '') ?? '');
+	const lookupsRaw = get('contentLookups', {}) as { lookups?: Array<Record<string, unknown>> };
+	const lookups: ContentLookup[] = Array.isArray(lookupsRaw?.lookups)
+		? lookupsRaw.lookups.map((entry) => ({
+				name: String(entry.name ?? '').trim(),
 				lookupTable: String(entry.lookupTable ?? ''),
 				localColumn: String(entry.localColumn ?? ''),
 				foreignColumn: String(entry.foreignColumn ?? ''),
 				valueColumn: String(entry.valueColumn ?? ''),
+				fallback: String(entry.fallback ?? ''),
 			}))
 		: [];
 
@@ -172,7 +169,8 @@ function readTableParams(ctx: FetchContext, itemIndex: number): TableParams {
 		roleColumnSelected: String(get('roleColumn', '') ?? ''),
 		explicitRoles,
 		contentMode,
-		parts,
+		template,
+		lookups,
 	};
 }
 
@@ -236,49 +234,77 @@ async function fetchTableMode(
 			orderSecondary = resolved.secondary;
 		}
 
-		let parts: ContentPart[];
+		let template: string;
+		let lookups: ContentLookup[];
 		if (params.contentMode === 'auto') {
 			const autoColumn = wrapResolve(node, itemIndex, 'Content column', () =>
 				resolveContentColumn(tableColumns),
 			);
-			parts = [{ source: 'column', column: autoColumn, prefix: '', suffix: '', fallback: '' }];
+			template = `{{${autoColumn}}}`;
+			lookups = [];
 		} else {
-			if (params.parts.length === 0) {
+			if (params.template.trim() === '') {
 				fail(
 					node,
 					itemIndex,
-					'Add at least one Message Part',
-					'Content Source is "Custom parts" but no parts are defined. Add a part (column or lookup) below.',
+					'Content Template is empty',
+					'Content Source is "Custom template" but no template is written. Example: {{message}} (replying to: "{{quoted}}", message id: "{{id}}").',
 				);
 			}
-			parts = params.parts.map((part, partIndex) => {
-				if (part.source === 'lookup') {
-					for (const [key, label] of [
-						['lookupTable', 'Lookup Table'],
-						['localColumn', 'Local Column'],
-						['foreignColumn', 'Match Column'],
-						['valueColumn', 'Value Column'],
-					] as const) {
-						if (!part[key] || String(part[key]).trim() === '') {
-							fail(node, itemIndex, `Message Part ${partIndex + 1}: ${label} is missing`, 'Fill in all lookup fields (table, local column, match column, value column).');
-						}
-					}
-				} else if (!part.column || part.column.trim() === '') {
-					fail(node, itemIndex, `Message Part ${partIndex + 1}: no column selected`, 'Pick a column for the message part (or switch the part to a lookup).');
+			template = params.template;
+			lookups = params.lookups.map((lookup, lookupIndex) => {
+				if (!lookup.name.match(/^[A-Za-z_][A-Za-z0-9_]*$/)) {
+					fail(
+						node,
+						itemIndex,
+						`Lookup ${lookupIndex + 1}: invalid name "${lookup.name || '(empty)'}"`,
+						'Lookup names are referenced as {{name}} in the template: use letters, digits and underscore only, not starting with a digit.',
+					);
 				}
-				return part;
+				for (const [key, label] of [
+					['lookupTable', 'Lookup Table'],
+					['localColumn', 'Local Column'],
+					['foreignColumn', 'Match Column'],
+					['valueColumn', 'Value Column'],
+				] as const) {
+					if (!lookup[key] || String(lookup[key]).trim() === '') {
+						fail(node, itemIndex, `Lookup "${lookup.name}": ${label} is missing`, 'Fill in all lookup fields (table, local column, match column, value column).');
+					}
+				}
+				return lookup;
 			});
+			const seenNames = new Set<string>();
+			for (const lookup of lookups) {
+				if (seenNames.has(lookup.name)) {
+					fail(node, itemIndex, `Duplicate lookup name "{{${lookup.name}}}"`, 'Give each lookup a unique name.');
+				}
+				seenNames.add(lookup.name);
+			}
+		}
+
+		// Typo detection: every {{name}} must be a table column or a lookup name.
+		const availableColumns = new Set(tableColumns.map((column) => column.column_name));
+		const lookupNames = new Set(lookups.map((lookup) => lookup.name));
+		for (const name of extractTemplateNames(template)) {
+			if (!availableColumns.has(name) && !lookupNames.has(name)) {
+				fail(
+					node,
+					itemIndex,
+					`Template references unknown "{{${name}}}"`,
+					`Available columns: ${[...availableColumns].join(', ') || '(none)'}. ` +
+						(lookupNames.size > 0 ? `Lookups: ${[...lookupNames].join(', ')}.` : 'No lookups defined — add one under Content Lookups or fix the name.'),
+				);
+			}
 		}
 
 		const selectSet = new Set<string>([roleColumn]);
 		if (orderPrimary) selectSet.add(orderPrimary);
 		if (orderSecondary) selectSet.add(orderSecondary);
-		for (const part of parts) {
-			if (part.source === 'lookup') {
-				if (part.localColumn) selectSet.add(part.localColumn);
-			} else if (part.column) {
-				selectSet.add(part.column);
-			}
+		for (const name of extractTemplateNames(template)) {
+			if (availableColumns.has(name)) selectSet.add(name);
+		}
+		for (const lookup of lookups) {
+			if (lookup.localColumn) selectSet.add(lookup.localColumn);
 		}
 
 		const direction = params.loadMode === 'recent' && orderPrimary ? 'DESC' : 'ASC';
@@ -306,34 +332,33 @@ async function fetchTableMode(
 			fail(node, itemIndex, `Table query failed: ${message}`, `Executed SQL: ${sql}`);
 		}
 
-		// Single batched lookup per lookup part (no N+1).
-		for (const part of parts) {
-			if (part.source !== 'lookup') continue;
-			const keys = [...new Set(rows.map((row) => row[part.localColumn ?? '']).filter((key) => key !== undefined && key !== null && key !== ''))];
+		// Single batched lookup per named lookup (no N+1).
+		for (const lookup of lookups) {
+			const keys = [...new Set(rows.map((row) => row[lookup.localColumn]).filter((key) => key !== undefined && key !== null && key !== ''))];
 			const lookupValues = new Map<string, string>();
 			if (keys.length > 0) {
-				const lookup = buildLookupQuery({
+				const lookupQuery = buildLookupQuery({
 					schema: params.schema,
-					table: String(part.lookupTable),
-					foreignColumn: String(part.foreignColumn),
-					valueColumn: String(part.valueColumn),
+					table: lookup.lookupTable,
+					foreignColumn: lookup.foreignColumn,
+					valueColumn: lookup.valueColumn,
 				});
 				try {
-					const lookupResult = await db.query(lookup.text, [keys]);
+					const lookupResult = await db.query(lookupQuery.text, [keys]);
 					for (const lookupRow of lookupResult.rows) {
 						lookupValues.set(String(lookupRow.__key), toText(lookupRow.__value));
 					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					fail(node, itemIndex, `Lookup query failed: ${message}`, `Executed SQL: ${lookup.text}`);
+					fail(node, itemIndex, `Lookup query failed: ${message}`, `Executed SQL: ${lookupQuery.text}`);
 				}
 			}
-			part.lookupValues = lookupValues;
+			lookup.lookupValues = lookupValues;
 		}
 
 		let messages = mapTableRows(
 			rows,
-			{ roleColumn, explicitRoles: params.explicitRoles, parts },
+			{ roleColumn, explicitRoles: params.explicitRoles, template, lookups },
 			node,
 			itemIndex ?? undefined,
 		);
@@ -346,7 +371,7 @@ async function fetchTableMode(
 			autoNotes.push(`ordering=${orderPrimary}`);
 		}
 		if (params.contentMode === 'auto') {
-			autoNotes.push(`content=${parts[0]?.column ?? ''}`);
+			autoNotes.push(`content=${extractTemplateNames(template)[0] ?? ''}`);
 		}
 		if (!params.roleColumnSelected) {
 			autoNotes.push(`role=${roleColumn}`);

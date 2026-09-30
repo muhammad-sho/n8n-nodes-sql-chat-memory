@@ -430,9 +430,9 @@ export const v11Properties: INodeProperties[] = [
 				description: 'Use the first text-like column (prefers message, content, body, text)',
 			},
 			{
-				name: 'Custom Parts',
+				name: 'Custom Template',
 				value: 'custom',
-				description: 'Assemble the text from one or more columns, with optional static text and lookups',
+				description: 'Write a template with {{column}} placeholders, e.g. {{message}} (replying to: "{{quoted}}")',
 			},
 		],
 		displayOptions: {
@@ -442,50 +442,47 @@ export const v11Properties: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Message Parts',
-		name: 'contentParts',
+		displayName: 'Content Template',
+		name: 'contentTemplate',
+		type: 'string',
+		default: '',
+		placeholder: '{{message}} (replying to: "{{quoted}}", message id: "{{id}}")',
+		description:
+			'Message text with {{column}} placeholders for row columns and {{lookup}} placeholders for lookups defined below. Unknown names render empty; missing lookup keys use the lookup fallback. This field is not an n8n expression — write placeholders literally.',
+		noDataExpression: true,
+		typeOptions: {
+			rows: 4,
+		},
+		displayOptions: {
+			show: {
+				mode: ['table'],
+				contentMode: ['custom'],
+			},
+		},
+	},
+	{
+		displayName: 'Content Lookups',
+		name: 'contentLookups',
 		type: 'fixedCollection',
 		typeOptions: {
 			multipleValues: true,
 		},
-		placeholder: 'Add Message Part',
+		placeholder: 'Add Lookup',
 		default: {},
-		description: 'Parts are concatenated in order to form the message text.',
+		description:
+			'Named values fetched from other tables for {{name}} placeholders (one batched query each, e.g. a quoted message by id).',
 		options: [
 			{
-				displayName: 'Part',
-				name: 'parts',
+				displayName: 'Lookup',
+				name: 'lookups',
 				values: [
 					{
-						displayName: 'Source',
-						name: 'source',
-						type: 'options',
-						noDataExpression: true,
-						default: 'column',
-						options: [
-							{
-								name: 'From Column',
-								value: 'column',
-								description: 'Take the text from a column of the history row',
-							},
-							{
-								name: 'From Another Table',
-								value: 'lookup',
-								description:
-									'Fetch the text from another table using a key on the history row (one batched query, e.g. a quoted message by id)',
-							},
-						],
-					},
-					{
-						displayName: 'Column',
-						name: 'column',
-						...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. message'),
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
 						default: '',
-						displayOptions: {
-							show: {
-								source: ['column'],
-							},
-						},
+						placeholder: 'e.g. quoted',
+						description: 'Placeholder name used as {{name}} in the template (letters, digits, underscore).',
 					},
 					{
 						displayName: 'Lookup Table',
@@ -497,11 +494,6 @@ export const v11Properties: INodeProperties[] = [
 							loadOptionsMethod: 'getLookupTables',
 							loadOptionsDependsOn: ['schema.value', 'table.value'],
 						},
-						displayOptions: {
-							show: {
-								source: ['lookup'],
-							},
-						},
 					},
 					{
 						displayName: 'Local Column',
@@ -510,11 +502,6 @@ export const v11Properties: INodeProperties[] = [
 						default: '',
 						description:
 							'Column on the history row holding the key (e.g. the quoted message id).',
-						displayOptions: {
-							show: {
-								source: ['lookup'],
-							},
-						},
 					},
 					{
 						displayName: 'Match Column',
@@ -526,11 +513,6 @@ export const v11Properties: INodeProperties[] = [
 						typeOptions: {
 							loadOptionsMethod: 'getLookupColumns',
 							loadOptionsDependsOn: ['&lookupTable'],
-						},
-						displayOptions: {
-							show: {
-								source: ['lookup'],
-							},
 						},
 					},
 					{
@@ -544,27 +526,6 @@ export const v11Properties: INodeProperties[] = [
 							loadOptionsMethod: 'getLookupColumns',
 							loadOptionsDependsOn: ['&lookupTable'],
 						},
-						displayOptions: {
-							show: {
-								source: ['lookup'],
-							},
-						},
-					},
-					{
-						displayName: 'Prefix',
-						name: 'prefix',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. (respondendo a "',
-						description: 'Static text placed before this part.',
-					},
-					{
-						displayName: 'Suffix',
-						name: 'suffix',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. ")',
-						description: 'Static text placed after this part.',
 					},
 					{
 						displayName: 'Fallback',
@@ -572,7 +533,7 @@ export const v11Properties: INodeProperties[] = [
 						type: 'string',
 						default: '',
 						description:
-							'Used when the value is empty (e.g. no quoted message). Leave empty to skip the part.',
+							'Used when the key is empty or finds no row (e.g. a message without a quote). Leave empty to render nothing.',
 					},
 				],
 			},

@@ -2,7 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langc
 import type { INode } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { ChatRole, ContentPart, DbRow, RoleMapping, SqlChatRow } from './types';
+import type { ChatRole, ContentLookup, DbRow, RoleMapping, SqlChatRow } from './types';
 
 export const SUPPORTED_ROLES: readonly ChatRole[] = ['user', 'assistant', 'system'];
 
@@ -133,32 +133,71 @@ export function resolveRole(
 	});
 }
 
-function partText(part: ContentPart, row: DbRow): string {
-	let raw: unknown;
-	if (part.source === 'lookup') {
-		const key = row[part.localColumn ?? ''];
-		raw = key === undefined || key === null ? undefined : part.lookupValues?.get(String(key));
-	} else {
-		raw = part.column ? row[part.column] : undefined;
-	}
+const PLACEHOLDER_PATTERN = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
-	if (raw === undefined || raw === null || raw === '') {
-		return part.fallback ?? '';
+/**
+ * List the placeholder names used in a content template, in order of first
+ * appearance, e.g. `{{message}} (replying to "{{quoted}}")` -> ["message", "quoted"].
+ * Anything that is not a `{{name}}` placeholder is left untouched.
+ */
+export function extractTemplateNames(template: string): string[] {
+	const names: string[] = [];
+	const seen = new Set<string>();
+	PLACEHOLDER_PATTERN.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = PLACEHOLDER_PATTERN.exec(template)) !== null) {
+		if (!seen.has(match[1])) {
+			seen.add(match[1]);
+			names.push(match[1]);
+		}
 	}
-	const prefix = part.prefix ?? '';
-	const suffix = part.suffix ?? '';
-	return `${prefix}${toText(raw)}${suffix}`;
+	return names;
+}
+
+export interface ResolvedLookup {
+	values: Map<string, string>;
+	fallback: string;
+	localColumn: string;
+}
+
+/**
+ * Render a content template for one row. `{{name}}` resolves to the row's
+ * column first, then to a named lookup; unknown names render as an empty
+ * string, and missing lookup keys fall back to the lookup's fallback text.
+ */
+export function renderContentTemplate(
+	template: string,
+	row: DbRow,
+	lookups: Map<string, ResolvedLookup>,
+): string {
+	PLACEHOLDER_PATTERN.lastIndex = 0;
+	return template.replace(PLACEHOLDER_PATTERN, (_whole, name: string) => {
+		const columnValue = row[name];
+		if (columnValue !== undefined && columnValue !== null && columnValue !== '') {
+			return toText(columnValue);
+		}
+		const lookup = lookups.get(name);
+		if (!lookup) return '';
+		const key = row[lookup.localColumn];
+		if (key !== undefined && key !== null && key !== '') {
+			const hit = lookup.values.get(String(key));
+			if (hit !== undefined) return hit;
+		}
+		return lookup.fallback;
+	});
 }
 
 export interface TableMapConfig {
 	roleColumn: string;
 	explicitRoles: RoleMapping[];
-	parts: ContentPart[];
+	template: string;
+	lookups: ContentLookup[];
 }
 
 /**
  * Convert Table Mapping mode rows to LangChain messages, preserving row order.
- * Content is assembled by concatenating the configured parts in order.
+ * Content is rendered from the template; each `{{name}}` pulls the row's
+ * column or the named lookup (lookups carry their pre-fetched value maps).
  */
 export function mapTableRows(
 	rows: DbRow[],
@@ -195,7 +234,15 @@ export function mapTableRows(
 		}
 
 		const role = resolveRole(rawRole, config.explicitRoles, node, index, itemIndex);
-		const text = config.parts.map((part) => partText(part, row as DbRow)).join('');
+		const lookups = new Map<string, ResolvedLookup>();
+		for (const lookup of config.lookups) {
+			lookups.set(lookup.name, {
+				values: lookup.lookupValues ?? new Map<string, string>(),
+				fallback: lookup.fallback ?? '',
+				localColumn: lookup.localColumn,
+			});
+		}
+		const text = renderContentTemplate(config.template, row as DbRow, lookups);
 		return toMessage(role, text);
 	});
 }

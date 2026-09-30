@@ -79,7 +79,8 @@ const TABLE_PARAMS = {
 		],
 	},
 	contentMode: 'auto',
-	contentParts: {},
+	contentTemplate: '',
+	contentLookups: {},
 };
 
 describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
@@ -115,8 +116,8 @@ describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
 
 	it('resolves lookups with a single batched ANY query', async () => {
 		const historyRows = [
-			{ direction: 'sent', message: 'reply', quoted_message_id: 7 },
-			{ direction: 'received', message: 'plain', quoted_message_id: null },
+			{ direction: 'sent', id: 54, message: 'reply', quoted_message_id: 7 },
+			{ direction: 'received', id: 55, message: 'plain', quoted_message_id: null },
 		];
 		let lookupCalls = 0;
 		mock = installFakeClient((text) => {
@@ -132,13 +133,12 @@ describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
 		const params = {
 			...TABLE_PARAMS,
 			contentMode: 'custom',
-			contentParts: {
-				parts: [
-					{ source: 'column', column: 'message', prefix: '', suffix: '', fallback: '' },
+			contentTemplate: '{{message}} (replying to: "{{quoted}}", message id: "{{id}}")',
+			contentLookups: {
+				lookups: [
 					{
-						source: 'lookup', lookupTable: 'messages', localColumn: 'quoted_message_id',
-						foreignColumn: 'id', valueColumn: 'message',
-						prefix: ' (respondendo a "', suffix: '")', fallback: '',
+						name: 'quoted', lookupTable: 'messages', localColumn: 'quoted_message_id',
+						foreignColumn: 'id', valueColumn: 'message', fallback: '',
 					},
 				],
 			},
@@ -147,8 +147,8 @@ describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
 		const out = await node.supplyData.call(makeCtx({ params }), 0);
 		const vars = await out.response.loadMemoryVariables({});
 		assert.equal(lookupCalls, 1, 'exactly one batched lookup query');
-		assert.equal(vars.chat_history[1].content, 'reply (respondendo a "original text")');
-		assert.equal(vars.chat_history[0].content, 'plain');
+		assert.equal(vars.chat_history[1].content, 'reply (replying to: "original text", message id: "54")');
+		assert.equal(vars.chat_history[0].content, 'plain (replying to: "", message id: "55")');
 	});
 
 	it('applies where filters as bound parameters', async () => {

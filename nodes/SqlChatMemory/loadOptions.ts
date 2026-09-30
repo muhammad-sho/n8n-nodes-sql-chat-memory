@@ -132,7 +132,7 @@ export async function getLookupTables(this: ILoadOptionsFunctions): Promise<INod
 	}
 }
 
-/** Columns of the lookup table selected in the same Message Part. */
+/** Columns of the lookup table selected in the same Content Lookup. */
 export async function getLookupColumns(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 	try {
 		const credentials = await readCredentials(this);
@@ -205,19 +205,24 @@ function echoMappingConfig(ctx: ILoadOptionsFunctions): string[] {
 	}
 
 	try {
-		const raw = ctx.getNodeParameter('contentParts', {}) as { parts?: Array<Record<string, unknown>> };
-		const parts = Array.isArray(raw?.parts) ? raw.parts : [];
-		parts.forEach((part, index) => {
-			if (part.source === 'lookup') {
+		const raw = ctx.getNodeParameter('contentTemplate', '') as string;
+		if (raw && String(raw).trim() !== '') echo.push(`Content Template: ${String(raw)}`);
+	} catch {
+		// Ignore unreadable template in the echo.
+	}
+
+	try {
+		const raw = ctx.getNodeParameter('contentLookups', {}) as { lookups?: Array<Record<string, unknown>> };
+		const lookups = Array.isArray(raw?.lookups) ? raw.lookups : [];
+		lookups.forEach((lookup) => {
+			if (lookup.name) {
 				echo.push(
-					`Message Part ${index + 1}: lookup ${String(part.valueColumn ?? '')} from ${String(part.lookupTable ?? '')} where ${String(part.foreignColumn ?? '')} = row.${String(part.localColumn ?? '')}`,
+					`Content Lookup {{${String(lookup.name)}}}: ${String(lookup.valueColumn ?? '')} from ${String(lookup.lookupTable ?? '')} where ${String(lookup.foreignColumn ?? '')} = row.${String(lookup.localColumn ?? '')}`,
 				);
-			} else if (part.column) {
-				echo.push(`Message Part ${index + 1}: column ${String(part.column)}`);
 			}
 		});
 	} catch {
-		// Ignore unreadable parts in the echo.
+		// Ignore unreadable lookups in the echo.
 	}
 
 	return echo;

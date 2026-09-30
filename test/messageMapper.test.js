@@ -8,6 +8,8 @@ const {
 	mapTableRows,
 	resolveRole,
 	toText,
+	extractTemplateNames,
+	renderContentTemplate,
 } = require('../dist/nodes/SqlChatMemory/messageMapper.js');
 const {
 	HumanMessage,
@@ -75,6 +77,41 @@ describe('resolveRole', () => {
 	});
 });
 
+describe('extractTemplateNames', () => {
+	it('lists placeholders in order, deduplicated, ignoring other braces', () => {
+		assert.deepEqual(
+			extractTemplateNames('{{message}} (replying to: "{{quoted}}", id: "{{id}}") and {{message}} again {not-a-placeholder}'),
+			['message', 'quoted', 'id'],
+		);
+		assert.deepEqual(extractTemplateNames('plain text'), []);
+	});
+});
+
+describe('renderContentTemplate', () => {
+	it('renders columns, lookups, fallbacks and empty unknowns', () => {
+		const lookups = new Map([
+			['quoted', { values: new Map([['7', 'original text']]), fallback: '(no quote)', localColumn: 'quoted_message_id' }],
+		]);
+		assert.equal(
+			renderContentTemplate('{{message}} (replying to: "{{quoted}}", id: "{{id}}")', { message: 'hi', quoted_message_id: 7, id: 54 }, lookups),
+			'hi (replying to: "original text", id: "54")',
+		);
+		assert.equal(
+			renderContentTemplate('{{message}} (replying to: "{{quoted}}")', { message: 'hi', quoted_message_id: 404 }, lookups),
+			'hi (replying to: "(no quote)")',
+		);
+		assert.equal(
+			renderContentTemplate('{{message}}{{missing}}', { message: 'hi' }, new Map()),
+			'hi',
+		);
+	});
+
+	it('prefers row columns over same-named lookups', () => {
+		const lookups = new Map([['message', { values: new Map(), fallback: 'fb', localColumn: 'x' }]]);
+		assert.equal(renderContentTemplate('{{message}}', { message: 'row wins' }, lookups), 'row wins');
+	});
+});
+
 describe('mapTableRows (Table Mapping mode)', () => {
 	const config = {
 		roleColumn: 'direction',
@@ -82,7 +119,8 @@ describe('mapTableRows (Table Mapping mode)', () => {
 			{ from: 'sent', to: 'assistant' },
 			{ from: 'received', to: 'user' },
 		],
-		parts: [{ source: 'column', column: 'message', prefix: '', suffix: '', fallback: '' }],
+		template: '{{message}}',
+		lookups: [],
 	};
 
 	it('maps rows in order using explicit + auto roles', () => {
@@ -100,60 +138,28 @@ describe('mapTableRows (Table Mapping mode)', () => {
 		assert.ok(msgs[1] instanceof AIMessage);
 	});
 
-	it('assembles prefix/suffix/fallback and skips empty parts', () => {
+	it('injects per-message context through the template', () => {
 		const msgs = mapTableRows(
-			[{ direction: 'sent', message: 'see this', quoted: 'orig' }],
+			[{ direction: 'sent', id: 54, message: 'hello, i need to cancel', quoted_message_id: 7 }],
 			{
 				roleColumn: 'direction',
 				explicitRoles: [{ from: 'sent', to: 'assistant' }],
-				parts: [
-					{ source: 'column', column: 'message', prefix: '', suffix: '', fallback: '' },
-					{ source: 'column', column: 'quoted', prefix: ' (respondendo a "', suffix: '")', fallback: '' },
-				],
-			},
-			fakeNode,
-			0,
-		);
-		assert.equal(msgs[0].content, 'see this (respondendo a "orig")');
-
-		const skipped = mapTableRows(
-			[{ direction: 'sent', message: 'see this', quoted: null }],
-			{
-				roleColumn: 'direction',
-				explicitRoles: [{ from: 'sent', to: 'assistant' }],
-				parts: [
-					{ source: 'column', column: 'message', prefix: '', suffix: '', fallback: '' },
-					{ source: 'column', column: 'quoted', prefix: ' (q: ', suffix: ')', fallback: ' (no quote)' },
-				],
-			},
-			fakeNode,
-			0,
-		);
-		assert.equal(skipped[0].content, 'see this (no quote)');
-	});
-
-	it('resolves lookup parts from the pre-fetched map', () => {
-		const msgs = mapTableRows(
-			[{ direction: 'sent', message: 'reply', quoted_message_id: 7 }],
-			{
-				roleColumn: 'direction',
-				explicitRoles: [{ from: 'sent', to: 'assistant' }],
-				parts: [
-					{ source: 'column', column: 'message', prefix: '', suffix: '', fallback: '' },
+				template: '{{message}} (replying to: "{{quoted}}", message id: "{{id}}")',
+				lookups: [
 					{
-						source: 'lookup',
-						localColumn: 'quoted_message_id',
-						lookupValues: new Map([['7', 'original text']]),
-						prefix: ' (respondendo a "',
-						suffix: '")',
-						fallback: '',
+						name: 'quoted', lookupTable: 'messages', localColumn: 'quoted_message_id',
+						foreignColumn: 'id', valueColumn: 'message', fallback: '',
+						lookupValues: new Map([['7', 'this is AI support, how can i help?']]),
 					},
 				],
 			},
 			fakeNode,
 			0,
 		);
-		assert.equal(msgs[0].content, 'reply (respondendo a "original text")');
+		assert.equal(
+			msgs[0].content,
+			'hello, i need to cancel (replying to: "this is AI support, how can i help?", message id: "54")',
+		);
 	});
 
 	it('errors clearly on missing role values and unmapped roles', () => {

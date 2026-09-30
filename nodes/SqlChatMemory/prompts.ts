@@ -49,7 +49,7 @@ export function buildMappingPrompt(context: PromptTableContext): string {
 		'',
 		'Now produce, field by field:',
 		'1. Role Column: which column holds the sender/type. Then the Role Mappings: EVERY distinct value mapped to user, assistant or system (e.g. sent -> assistant, received -> user).',
-		'2. Message Parts, in order: each as column + optional static prefix/suffix/fallback text. Example: part 1 = message column; part 2 = quoted-message column with prefix `(respondendo a "` and suffix `")`. If the quote lives behind an ID (e.g. quoted_message_id), specify the lookup: lookup table + local column + match column + value column.',
+		'2. Content Template: one text with {{column}} placeholders for row columns and {{lookup}} placeholders for looked-up values, e.g. {{message}} (replying to: "{{quoted}}", message id: "{{id}}"). For values living in another table (e.g. a quoted message behind quoted_message_id), define a Content Lookup: a name plus lookup table, local key column, match column and value column; missing keys render the lookup fallback text.',
 		'3. Ordering Column (timestamp or incrementing id column) and History Window (Most Recent N vs Oldest N).',
 		'4. Select Rows filter for scoping to one conversation (e.g. a session/user/chat id column = the runtime session id).',
 		'',

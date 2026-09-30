@@ -19,7 +19,7 @@ Read-only AI Chat Memory for n8n. Loads conversation history from PostgreSQL —
 **Table Mapping** (default, no SQL needed): pick Schema + Table from dropdowns, optionally add Select Rows filters (e.g. a session/user/chat id column = `{{ $json.sessionId }}`), pick ordering (auto-detected: timestamp, else integer key), History Window (Most Recent N / Oldest N) and Limit. Then map:
 
 - **Role Column** (+ Role Mappings for custom values like `sent → assistant`, `received → user`; standard names are auto-recognized),
-- **Message Parts** (one or more columns with optional prefix/suffix/fallback, concatenated in order; parts can also come from another table via a batched key lookup, e.g. a quoted message by id).
+- **Message text**: auto-detected, or a **Content Template** with `{{column}}` placeholders — e.g. `{{message}} (replying to: "{{quoted}}", message id: "{{id}}")` — so per-message context (quoted text, ids, labels) is injected into the content itself. Placeholders can also pull from another table via named **Content Lookups** (one batched query each, e.g. a quoted message by id; missing keys render the lookup's fallback text).
 
 Every mapping field defaults to auto-detect with an explicit override. The executed SQL is shown in the run's hints.
 
