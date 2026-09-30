@@ -82,8 +82,10 @@ describe('V11', () => {
 		);
 		const formatNotice = description.properties.find((p) => p.name === 'sqlFormatNotice');
 		assert.equal(formatNotice.type, 'notice');
-		assert.match(formatNotice.displayName, /exactly two columns/);
-		assert.match(formatNotice.displayName, /role.*content/);
+		assert.match(formatNotice.displayName, /one JSON object per row/);
+		assert.match(formatNotice.displayName, /"role"/);
+		assert.match(formatNotice.displayName, /"content"/);
+		assert.match(formatNotice.displayName, /oldest first/);
 		assert.deepEqual(formatNotice.displayOptions.show, { mode: ['sql'] });
 		assert.ok(!description.properties.some((p) => p.type === 'button'), 'no button properties');
 	});

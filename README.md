@@ -28,21 +28,22 @@ The lists only load while you set up the node — never during a run.
 
 ## Custom Query mode (advanced)
 
-Only the **SQL Query** field. Write whatever you need — filtering, JOINs, message text built in SQL — as long as it returns exactly `role` (`user`/`assistant`/`system`) + `content`, oldest rows first. You can use expressions. Read-only: `SELECT` queries only.
+Only the **SQL Query** field. Write whatever you need — filtering, JOINs, message text built in SQL — as long as each result row looks like this:
 
-```sql
-SELECT role, content
-FROM chat_messages
-WHERE session_id = '{{ $json.sessionId }}'
-ORDER BY created_at ASC
-LIMIT 50;
+```json
+[
+  { "role": "user", "content": "hello" },
+  { "role": "assistant", "content": "Hi, how can I help?" }
+]
 ```
+
+`role` is one of `user`, `assistant` or `system`. Load the newest X messages, but return them oldest first. You can use expressions. Read-only: `SELECT` queries only.
 
 Missing `role`/`content` or an unsupported `role` produces a clear node error.
 
 ## Custom query format
 
-The Custom Query page ends with a guidance box stating the exact output format the node expects (`role` + `content`, oldest rows first) with an example. Write the query however you want around that.
+The Custom Query page ends with a guidance box showing this same JSON output format. Write the query however you want around that.
 
 ## Intended workflow
 

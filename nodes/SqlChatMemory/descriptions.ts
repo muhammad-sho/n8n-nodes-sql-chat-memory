@@ -65,7 +65,12 @@ export const queryPropertyV11: INodeProperties = {
 	},
 };
 
-const SQL_FORMAT_NOTICE = `Expected query output: exactly two columns — role (one of user, assistant, system) and content (the message text) — oldest rows first. Example: SELECT role, content FROM chat_messages WHERE session_id = '{{ $json.sessionId }}' ORDER BY created_at ASC LIMIT 50. SELECT only.`;
+const SQL_FORMAT_NOTICE = `Expected output — one JSON object per row, exactly these two keys:
+[
+  { "role": "user", "content": "hello" },
+  { "role": "assistant", "content": "Hi, how can I help?" }
+]
+role is one of user, assistant, system. Load the newest X messages, but return them oldest first.`;
 
 /**
  * Full v1.1 property list. Table Mapping mode is a fixed six-field flow
@@ -175,8 +180,7 @@ export const v11Properties: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		placeholder: "{{ $json.sessionId }}",
-		description:
-			'Value the session column must equal, e.g. {{ $json.sessionId }}. Expressions allowed. Required when a session column is set.',
+		description: 'Session id value.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
