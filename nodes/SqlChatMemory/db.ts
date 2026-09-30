@@ -4,33 +4,24 @@ import type { ColumnInfo, PostgresCredentials } from './types';
 
 export type { ColumnInfo };
 
-const IDENT_PART = /^[A-Za-z_][A-Za-z0-9_$]*$/;
-
 /**
- * Quote a (possibly schema-qualified) SQL identifier, e.g. `messages` or
- * `public.messages`. Each part must be a plain identifier; anything else
- * (spaces, semicolons, quotes, parens, ...) is rejected so user input from
- * dropdowns or expressions can never break out of the identifier position.
+ * Quote a SQL identifier by wrapping it in double quotes and escaping embedded
+ * double quotes (`"` -> `""`).
+ *
+ * Deliberately permissive: any non-empty name is accepted as-is — quoted
+ * identifiers in Postgres may contain spaces, mixed case, digits, unicode,
+ * even dots. User tables are fully custom, so the node never judges a name
+ * against example patterns. The only rejection is an empty string, which
+ * cannot form an identifier at all. Callers pass schema and table (or column)
+ * separately, so qualification stays correct without ever splitting names.
  * Throws a plain Error — callers wrap it into a NodeOperationError.
  */
 export function quoteIdent(name: string): string {
-	const trimmed = String(name ?? '').trim();
-	if (trimmed === '') {
+	const text = String(name ?? '');
+	if (text.trim() === '') {
 		throw new Error('Identifier is empty');
 	}
-	const parts = trimmed.split('.');
-	if (parts.length > 2) {
-		throw new Error(`Invalid identifier "${name}": at most one schema qualifier allowed`);
-	}
-	for (const part of parts) {
-		if (!IDENT_PART.test(part)) {
-			throw new Error(
-				`Invalid identifier "${name}": "${part}" is not a plain column/table name ` +
-					`(letters, digits, underscore and $ only, must not start with a digit)`,
-			);
-		}
-	}
-	return parts.map((part) => `"${part.replace(/"/g, '""')}"`).join('.');
+	return `"${text.replace(/"/g, '""')}"`;
 }
 
 export function createPgClient(credentials: PostgresCredentials): Client {

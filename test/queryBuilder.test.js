@@ -23,15 +23,18 @@ const COLUMNS = [
 ];
 
 describe('quoteIdent', () => {
-	it('quotes plain and qualified identifiers', () => {
+	it('quotes any non-empty name as a single identifier (user tables are fully custom)', () => {
 		assert.equal(quoteIdent('message'), '"message"');
-		assert.equal(quoteIdent('public.messages'), '"public"."messages"');
+		assert.equal(quoteIdent('My Messages'), '"My Messages"');
+		assert.equal(quoteIdent('9lives'), '"9lives"');
+		assert.equal(quoteIdent('a;b'), '"a;b"');
+		assert.equal(quoteIdent('a.b.c'), '"a.b.c"');
+		assert.equal(quoteIdent('say "hi"'), '"say ""hi"""');
 	});
 
-	it('rejects hostile identifiers', () => {
-		for (const bad of ['', 'a b', 'a;b', 'a" OR "1"="1', 'a-b', '9lives', 'a.b.c', 'func()']) {
-			assert.throws(() => quoteIdent(bad), /Invalid identifier|empty/i, bad || '(empty)');
-		}
+	it('rejects only empty identifiers', () => {
+		assert.throws(() => quoteIdent(''), /empty/i);
+		assert.throws(() => quoteIdent('   '), /empty/i);
 	});
 });
 

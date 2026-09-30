@@ -35,9 +35,9 @@ LIMIT 50;
 
 The SQL is responsible for filtering, ordering, limiting, transforming, and selecting history. Missing `role`/`content` or an unsupported `role` produces a clear node error.
 
-## Testing inside the node (v1.1)
+## Testing
 
-The node also has a Main input and a **Preview** output. Connect any upstream node (e.g. a Manual Trigger or Set with a sample session id), open the node and **Test step**: the same fetch the Agent would run executes, and the mapped `{ role, content }` rows appear in the output panel. The Memory output works unchanged for the AI Agent.
+The node is a pure AI sub-node (Memory output only — no Main input/output). It receives its data context through the AI Agent connection, so expressions like `{{ $json.sessionId }}` resolve against the Agent's input items. To test: run the workflow (or Test the Agent step) with representative input and inspect the Agent's `chat_history` usage; the exact SQL the node executed is shown in the run's hints.
 
 ## Copy Prompt to Ask LLM (v1.1)
 
@@ -65,7 +65,7 @@ Persist new turns with your own downstream INSERT. This node only reads.
 ## Versions
 
 - **v1** (npm 0.1.0): SQL-only sub-node, frozen unchanged.
-- **v1.1** (npm 0.2.0): Table Mapping UI, in-node Preview testing, copy-prompt buttons. Existing v1 workflows keep working untouched.
+- **v1.1** (npm 0.2.x): Table Mapping UI plus copy-prompt buttons. Existing v1 workflows keep working untouched. Any table/column naming works — identifiers are quoted, never judged against examples.
 
 ## Development
 

@@ -51,14 +51,13 @@ function catalogHandler(extra = {}) {
 	};
 }
 
-function makeCtx({ params = {}, inputItems = [{}], hints = [] } = {}) {
+function makeCtx({ params = {}, hints = [] } = {}) {
 	return {
 		hints,
 		getNode: () => fakeNode,
 		getNodeParameter: (name, _itemIndex, fallback) => (name in params ? params[name] : fallback),
 		getCredentials: async () => CREDS,
 		addExecutionHints: (...h) => { hints.push(...h); },
-		getInputData: () => inputItems,
 	};
 }
 
@@ -219,38 +218,6 @@ describe('fetchMappedMessages — SQL mode (mocked pg)', () => {
 			0,
 		);
 		assert.equal((await out.response.loadMemoryVariables({})).chat_history.length, 1);
-	});
-});
-
-describe('execute() — in-node test/preview', () => {
-	let mock;
-	afterEach(() => mock?.restore());
-
-	it('returns { role, content } items with paired items', async () => {
-		mock = installFakeClient((text) => {
-			const base = catalogHandler()(text);
-			if (base.rows.length > 0 || text.includes('information_schema') || text.includes('pg_index')) return base;
-			return { rows: [{ direction: 'received', message: 'hey' }] };
-		});
-		const result = await new SqlChatMemoryV11().execute.call(
-			makeCtx({ params: TABLE_PARAMS, inputItems: [{ json: { sessionId: 's1' } }, { json: { sessionId: 's2' } }] }),
-		);
-		assert.equal(result.length, 1);
-		assert.equal(result[0].length, 2);
-		assert.deepEqual(result[0][0].json, { role: 'user', content: 'hey' });
-		assert.deepEqual(result[0][0].pairedItem, { item: 0 });
-		assert.deepEqual(result[0][1].pairedItem, { item: 1 });
-	});
-
-	it('runs once on a synthetic item when there is no input', async () => {
-		mock = installFakeClient((text) => {
-			const base = catalogHandler()(text);
-			if (base.rows.length > 0 || text.includes('information_schema') || text.includes('pg_index')) return base;
-			return { rows: [] };
-		});
-		const result = await new SqlChatMemoryV11().execute.call(makeCtx({ params: TABLE_PARAMS, inputItems: [] }));
-		assert.deepEqual(result, [[]]);
-		assert.ok(mock.seen.queries.some((q) => q.text.startsWith('SELECT ')), 'query still ran');
 	});
 });
 

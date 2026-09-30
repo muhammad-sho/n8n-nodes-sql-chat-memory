@@ -72,12 +72,12 @@ describe('V11', () => {
 	const node = new SqlChatMemoryV11();
 	const description = node.description;
 
-	it('has Main + Memory outputs and both entry points', () => {
-		assert.deepEqual(description.inputs, ['main']);
-		assert.deepEqual(description.outputs, ['main', 'ai_memory']);
-		assert.deepEqual(description.outputNames, ['Preview', 'Memory']);
-		assert.equal(typeof node.execute, 'function');
+	it('is a pure AI sub-node: no Main I/O, both entry points limited to supplyData', () => {
+		assert.deepEqual(description.inputs, []);
+		assert.deepEqual(description.outputs, ['ai_memory']);
+		assert.deepEqual(description.outputNames, ['Memory']);
 		assert.equal(typeof node.supplyData, 'function');
+		assert.equal(node.execute, undefined);
 	});
 
 	it('defaults new nodes to Table Mapping mode', () => {

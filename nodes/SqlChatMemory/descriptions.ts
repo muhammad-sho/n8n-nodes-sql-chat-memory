@@ -81,7 +81,7 @@ export const queryPropertyV11: INodeProperties = {
 /** Full v1.1 property list (mode switch + Table Mapping + Custom Query + buttons). */
 export const v11Properties: INodeProperties[] = [
 	{
-		displayName: 'Connect the Memory output to an AI Agent&apos;s Memory input. Connect the Preview output to nothing (or downstream nodes) — it is only for testing inside this node.',
+		displayName: "Connect the Memory output to an AI Agent's Memory input.",
 		name: 'connectionHintNotice',
 		type: 'notice',
 		default: '',
@@ -587,7 +587,7 @@ export const v11Properties: INodeProperties[] = [
 	queryPropertyV11,
 	{
 		displayName:
-			'This node is read-only. It runs during AI Agent execution, converts each row to a LangChain message (user → Human, assistant → AI, system → System) in order, and never writes to the database. Persist new turns with your own INSERT downstream. The Preview output is only for testing inside this node.',
+			'This node is read-only. It runs during AI Agent execution, converts each row to a LangChain message (user → Human, assistant → AI, system → System) in order, and never writes to the database. Persist new turns with your own INSERT downstream.',
 		name: 'readOnlyNotice',
 		type: 'notice',
 		default: '',

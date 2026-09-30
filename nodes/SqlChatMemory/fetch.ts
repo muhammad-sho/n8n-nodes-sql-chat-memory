@@ -35,7 +35,7 @@ import type {
 } from './types';
 
 /**
- * Minimal context shared by execute() and supplyData(). Callers cast their
+ * Minimal context for the shared fetch. Callers cast their
  * full context object to this shape.
  */
 export interface FetchContext {
@@ -403,7 +403,7 @@ async function fetchSqlMode(
 	return { messages, sql: query, rowCount };
 }
 
-/** Shared fetch used by execute() (test/preview) and supplyData() (Agent memory). */
+/** Shared fetch behind supplyData() (Agent memory path). */
 export async function fetchMappedMessages(
 	ctx: FetchContext,
 	itemIndex: number,
