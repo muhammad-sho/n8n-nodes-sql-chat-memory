@@ -52,7 +52,7 @@ export const queryPropertyV11: INodeProperties = {
 	placeholder:
 		"SELECT role, content FROM chat_messages WHERE session_id = '{{ $json.sessionId }}' ORDER BY created_at ASC LIMIT 50",
 	description:
-		'Return two columns: role (user, assistant or system) and content (the message text), oldest first. You can use expressions. SELECT only — nothing is ever saved or changed.',
+		'Must return role and content columns, oldest rows first. Expressions allowed. SELECT only.',
 	typeOptions: {
 		editor: 'sqlEditor',
 		sqlDialect: 'PostgreSQL',
@@ -65,43 +65,12 @@ export const queryPropertyV11: INodeProperties = {
 	},
 };
 
-const MAPPING_PROMPT_NOTICE = `Copy the text below into any AI chat (for example ChatGPT) after picking the Schema and Table above. It asks the AI to fill in every field for you, based on your table.
-
----
-Help me set up an n8n "SQL Chat Memory" node. Goal: load past chat messages from one database table so an AI agent remembers the conversation. The node only reads; it never saves or changes anything.
-
-My table:
-- Schema and table: [fill in, as picked above]
-- Columns, with types exactly as shown in the dropdown lists above:
-  [list them here, for example: id - number, session_id - text, sender - text, message - text, created_at - date and time]
-
-Tell me exactly what to enter for each field:
-1. Session Column and Session ID — which column groups messages into one conversation, and which value (fixed text or an expression) picks the current conversation.
-2. Order Column — which date or number column puts the messages in order (or say if it can stay empty for automatic detection).
-3. Role Column and Role Mappings — which column says who wrote each message, and which value means the person (user), the AI (assistant) or an instruction (system).
-4. Max Messages — how many past messages to load (suggest a number).
-
-Rules: messages reach the AI oldest first; every sender value must be matched to exactly one of user, assistant, system.
----`;
-
-const SQL_PROMPT_NOTICE = `Copy the text below into any AI chat (for example ChatGPT), together with your table name and columns. It asks the AI to write the query this node needs.
-
----
-Write a read-only SELECT query for an n8n "SQL Chat Memory" node. The query must return exactly two columns:
-- role: who wrote the message — only user, assistant or system (translate my own values if needed).
-- content: the complete message text.
-
-List the oldest messages first. Keep only one conversation (filter on my conversation column and value). The query must never save, change or delete anything.
-
-My table and columns:
-[describe them here]
----`;
+const SQL_FORMAT_NOTICE = `Expected query output: exactly two columns — role (one of user, assistant, system) and content (the message text) — oldest rows first. Example: SELECT role, content FROM chat_messages WHERE session_id = '{{ $json.sessionId }}' ORDER BY created_at ASC LIMIT 50. SELECT only.`;
 
 /**
  * Full v1.1 property list. Table Mapping mode is a fixed six-field flow
  * (Schema > Table > Session > Ordering > Role > Limit); Custom Query mode
- * is just the SQL field. Ends with a static copy-paste AI prompt notice
- * per mode (buttons cannot return backend results in n8n, so there are none).
+ * is just the SQL field plus a short expected-output-format guidance box.
  */
 export const v11Properties: INodeProperties[] = [
 	{
@@ -116,17 +85,17 @@ export const v11Properties: INodeProperties[] = [
 		type: 'options',
 		noDataExpression: true,
 		default: 'table',
-		description: 'Load history using a table form, or your own SQL query.',
+		description: 'Table form or custom SQL.',
 		options: [
 			{
 				name: 'Table Mapping',
 				value: 'table',
-				description: 'Pick a table and match its columns — no code needed',
+				description: 'Map table columns, no SQL needed',
 			},
 			{
 				name: 'Custom Query',
 				value: 'sql',
-				description: 'Write your own query for full control',
+				description: 'Full control with your own query',
 			},
 		],
 	},
@@ -137,7 +106,7 @@ export const v11Properties: INodeProperties[] = [
 		default: { mode: 'list', value: 'public' },
 		required: true,
 		placeholder: 'e.g. public',
-		description: 'The schema that contains your chat table',
+		description: 'Schema containing the table',
 		modes: [
 			{
 				displayName: 'From List',
@@ -165,7 +134,7 @@ export const v11Properties: INodeProperties[] = [
 		type: 'resourceLocator',
 		default: { mode: 'list', value: '' },
 		required: true,
-		description: 'The table where your chat messages are stored',
+		description: 'Table storing the chat messages',
 		modes: [
 			{
 				displayName: 'From List',
@@ -193,7 +162,7 @@ export const v11Properties: INodeProperties[] = [
 		...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. session_id'),
 		default: '',
 		description:
-			'The column that groups messages into one conversation. Leave empty if the table holds a single conversation.',
+			'Column holding the session id. Empty = the whole table is one conversation.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -207,7 +176,7 @@ export const v11Properties: INodeProperties[] = [
 		default: '',
 		placeholder: "{{ $json.sessionId }}",
 		description:
-			'Load only messages with this value. You can type an expression such as {{ $json.sessionId }}. Required when a session column is picked above.',
+			'Value the session column must equal, e.g. {{ $json.sessionId }}. Expressions allowed. Required when a session column is set.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -220,7 +189,7 @@ export const v11Properties: INodeProperties[] = [
 		...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. created_at'),
 		default: '',
 		description:
-			'The date or number column that puts messages in order. The newest messages are loaded. Leave empty to detect it automatically.',
+			'Date or incremental column defining the row order. Newest rows are loaded. Empty = auto-detect.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -233,8 +202,7 @@ export const v11Properties: INodeProperties[] = [
 		...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. direction'),
 		default: '',
 		required: true,
-		description:
-			'The column that says who wrote each message. Then match each of its values below.',
+		description: 'Column holding the sender value. Map each value below.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -250,7 +218,7 @@ export const v11Properties: INodeProperties[] = [
 		},
 		placeholder: 'Add Mapping',
 		default: {},
-		description: 'Match each value from the role column to who it stands for. Every value must be matched.',
+		description: 'Map each role-column value to user, assistant or system.',
 		options: [
 			{
 				displayName: 'Mapping',
@@ -260,7 +228,7 @@ export const v11Properties: INodeProperties[] = [
 						displayName: 'Table Value',
 						name: 'sourceValue',
 						type: 'options',
-						description: 'A value from the role column',
+						description: 'Value from the role column',
 						default: '',
 						typeOptions: {
 							loadOptionsMethod: 'getRoleValues',
@@ -272,7 +240,7 @@ export const v11Properties: INodeProperties[] = [
 						name: 'role',
 						type: 'options',
 						noDataExpression: true,
-						description: 'Who this value means: the person, the AI, or an instruction',
+						description: 'user = person, assistant = AI, system = instruction',
 						default: 'user',
 						options: [
 							{ name: 'User', value: 'user' },
@@ -294,7 +262,7 @@ export const v11Properties: INodeProperties[] = [
 		name: 'limit',
 		type: 'number',
 		default: 50,
-		description: 'How many past messages to load (1–1000).',
+		description: 'Number of messages to load (1–1000).',
 		typeOptions: {
 			minValue: 1,
 			maxValue: 1000,
@@ -314,19 +282,8 @@ export const v11Properties: INodeProperties[] = [
 		default: '',
 	},
 	{
-		displayName: MAPPING_PROMPT_NOTICE,
-		name: 'mappingPromptNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: {
-			show: {
-				mode: ['table'],
-			},
-		},
-	},
-	{
-		displayName: SQL_PROMPT_NOTICE,
-		name: 'sqlPromptNotice',
+		displayName: SQL_FORMAT_NOTICE,
+		name: 'sqlFormatNotice',
 		type: 'notice',
 		default: '',
 		displayOptions: {

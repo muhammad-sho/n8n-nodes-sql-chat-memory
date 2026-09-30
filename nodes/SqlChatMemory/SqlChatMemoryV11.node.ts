@@ -17,8 +17,8 @@ import {
 import { SqlChatReadOnlyMemory } from './memory';
 
 /**
- * SQL Chat Memory v1.1 — Table Mapping UI + Custom Query, with copy-prompt
- * buttons. A pure AI sub-node: no Main input/output, it receives its data
+ * SQL Chat Memory v1.1 — Table Mapping UI + Custom Query with an
+ * expected-format guidance box. A pure AI sub-node: no Main input/output, it receives its data
  * context (e.g. previous nodes' items for expressions) through the AI Agent
  * connection. Still strictly read-only.
  */

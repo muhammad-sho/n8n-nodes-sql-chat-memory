@@ -75,18 +75,16 @@ describe('V11', () => {
 		assert.equal(mode.default, 'table');
 	});
 
-	it('shows static copy-paste AI prompt notices (no buttons: editor drops string actions)', () => {
-		const mappingNotice = description.properties.find((p) => p.name === 'mappingPromptNotice');
-		const sqlNotice = description.properties.find((p) => p.name === 'sqlPromptNotice');
-		assert.equal(mappingNotice.type, 'notice');
-		assert.equal(sqlNotice.type, 'notice');
-		assert.match(mappingNotice.displayName, /Copy the text below into any AI chat/);
-		assert.match(sqlNotice.displayName, /Copy the text below into any AI chat/);
-		assert.match(mappingNotice.displayName, /Session Column and Session ID/);
-		assert.match(mappingNotice.displayName, /Role Column and Role Mappings/);
-		assert.match(sqlNotice.displayName, /exactly two columns/);
-		assert.deepEqual(mappingNotice.displayOptions.show, { mode: ['table'] });
-		assert.deepEqual(sqlNotice.displayOptions.show, { mode: ['sql'] });
+	it('shows an expected-format guidance box on the SQL page only (no prompts, no buttons)', () => {
+		assert.equal(
+			description.properties.find((p) => p.name === 'mappingPromptNotice'),
+			undefined,
+		);
+		const formatNotice = description.properties.find((p) => p.name === 'sqlFormatNotice');
+		assert.equal(formatNotice.type, 'notice');
+		assert.match(formatNotice.displayName, /exactly two columns/);
+		assert.match(formatNotice.displayName, /role.*content/);
+		assert.deepEqual(formatNotice.displayOptions.show, { mode: ['sql'] });
 		assert.ok(!description.properties.some((p) => p.type === 'button'), 'no button properties');
 	});
 

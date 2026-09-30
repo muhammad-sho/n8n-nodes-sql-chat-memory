@@ -40,9 +40,9 @@ LIMIT 50;
 
 Missing `role`/`content` or an unsupported `role` produces a clear node error.
 
-## Ask an LLM for help
+## Custom query format
 
-Each mode page ends with a box you can copy into any AI chat. The Table Mapping box asks the AI to fill in every field from your table (your columns and their types are shown in the dropdown lists above). The Custom Query box asks the AI to write the query — you describe your table to it.
+The Custom Query page ends with a guidance box stating the exact output format the node expects (`role` + `content`, oldest rows first) with an example. Write the query however you want around that.
 
 ## Intended workflow
 

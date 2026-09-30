@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-sql-chat-memory",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"description": "Read-only AI Chat Memory for n8n that loads conversation history from PostgreSQL via a user-defined SQL query.",
 	"license": "MIT",
 	"homepage": "https://github.com/muhammad-sho/n8n-nodes-sql-chat-memory",
