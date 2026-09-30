@@ -18,17 +18,17 @@ Read-only AI Chat Memory for n8n. Loads conversation history from PostgreSQL —
 
 Six fields, top to bottom:
 
-1. **Schema** / 2. **Table** — dropdowns listing what the credential can see (or typed names).
-3. **Session Column** + **Session ID** — the column holding the conversation/session/user id, and the value (or an expression like `{{ $json.sessionId }}`). Leave the column empty to load all rows. A selected column with an empty value stops the run instead of leaking other sessions.
-4. **Ordering Column** — a timestamp or incrementing id column (newer messages = later timestamps / higher ids). Leave empty to auto-detect. History is always loaded most-recent-first and handed to the AI oldest-first.
-5. **Role Column** (required) + **Role Mappings** — map every column value to `user`, `assistant` or `system` (e.g. `sent → assistant`, `received → user`). The dropdown shows each value with its type. Unmapped values stop the run naming the value — nothing is guessed.
-6. **Limit** — how many messages to return (1–1000, default 50).
+1. **Schema** / 2. **Table** — pick from the lists, or type a name.
+3. **Session Column** + **Session ID** — the column that groups messages into one conversation, and the value for the current one (or an expression like `{{ $json.sessionId }}`). Leave the column empty if the table holds a single conversation.
+4. **Order Column** — the date or number column that puts messages in order. Leave empty to detect it automatically. The newest messages are always loaded.
+5. **Role Column** (required) + **Role Mappings** — the column that says who wrote each message, with every value matched to the person (`user`), the AI (`assistant`) or an instruction (`system`). Unmatched values stop the run and name the value — nothing is guessed.
+6. **Max Messages** — how many past messages to load (1–1000, default 50).
 
-At runtime the node runs exactly one history `SELECT` (plus one tiny catalog read only when Ordering is left on auto-detect). Dropdown population queries only ever run while you configure the node — never per execution. The executed SQL is shown in the run's hints.
+The lists only load while you set up the node — never during a run.
 
 ## Custom Query mode (advanced)
 
-Only the **SQL Query** field. Write whatever you need — filtering, JOINs, quoted-message lookups, content built with concatenation/CASE — as long as it returns exactly `role` (`user`/`assistant`/`system`) + `content`, oldest rows first. Rows are handed to the AI unchanged. Supports n8n expressions. Read-only: `SELECT`/`WITH ... SELECT` only.
+Only the **SQL Query** field. Write whatever you need — filtering, JOINs, message text built in SQL — as long as it returns exactly `role` (`user`/`assistant`/`system`) + `content`, oldest rows first. You can use expressions. Read-only: `SELECT` queries only.
 
 ```sql
 SELECT role, content
@@ -42,12 +42,7 @@ Missing `role`/`content` or an unsupported `role` produces a clear node error.
 
 ## Ask an LLM for help
 
-Each mode page ends with a static, copy-paste prompt notice (n8n buttons cannot run backend code, so there is deliberately no button — the prompt text is directly selectable). Fill in your table/columns and paste it to any LLM:
-
-- Table Mapping page: asks for the six field values above.
-- Custom Query page: asks for the `role`+`content` SELECT.
-
-Full annotated versions live in this README's history: the Table Mapping prompt needs your columns (visible with types in the dropdowns above); the SQL prompt needs your table shape pasted in.
+Each mode page ends with a box you can copy into any AI chat. The Table Mapping box asks the AI to fill in every field from your table (your columns and their types are shown in the dropdown lists above). The Custom Query box asks the AI to write the query — you describe your table to it.
 
 ## Intended workflow
 

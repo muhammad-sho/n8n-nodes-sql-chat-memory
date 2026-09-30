@@ -43,7 +43,7 @@ export class SqlChatMemoryV1 implements INodeType {
 				placeholder:
 					"SELECT role, content FROM chat_messages WHERE session_id = '{{ $json.sessionId }}' ORDER BY created_at ASC LIMIT 50",
 				description:
-					'SELECT query that returns conversation history. It must return a "role" column (user, assistant or system) and a "content" column. Row order is preserved exactly as returned. Supports n8n expressions.',
+					'Return two columns: role (user, assistant or system) and content (the message text), oldest first. You can use expressions.',
 				typeOptions: {
 					editor: 'sqlEditor',
 					sqlDialect: 'PostgreSQL',
@@ -52,7 +52,7 @@ export class SqlChatMemoryV1 implements INodeType {
 			},
 			{
 				displayName:
-					'This node is read-only. It runs the SQL during AI Agent execution, converts each row to a LangChain message (user → Human, assistant → AI, system → System) in the exact SQL row order, and never writes to the database. Persist new turns with your own INSERT downstream.',
+					'This node only reads — it never saves or changes anything. Save new messages with your own steps after the AI agent replies.',
 				name: 'readOnlyNotice',
 				type: 'notice',
 				default: '',

@@ -9,7 +9,7 @@ export const sharedBase: INodeTypeBaseDescription = {
 	name: 'sqlChatMemory',
 	icon: 'file:sqlChatMemory.svg',
 	group: ['transform'],
-	description: 'Read-only AI chat memory that loads history from PostgreSQL via a custom SQL query',
+	description: 'Loads past chat messages from PostgreSQL so an AI agent remembers the conversation',
 	codex: {
 		categories: ['AI'],
 		subcategories: {
@@ -26,8 +26,7 @@ export const postgresCredentials = [
 	},
 ] as const;
 
-const chooseFromListDescription =
-	'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/" target="_blank">expression</a>';
+const chooseFromListDescription = 'Choose from the list, or enter a value with an expression';
 
 const columnPicker = (
 	loadOptionsMethod: string,
@@ -53,7 +52,7 @@ export const queryPropertyV11: INodeProperties = {
 	placeholder:
 		"SELECT role, content FROM chat_messages WHERE session_id = '{{ $json.sessionId }}' ORDER BY created_at ASC LIMIT 50",
 	description:
-		'Write the query so it already returns the final form: a "role" column (user, assistant or system) and a "content" column, oldest rows first. Build content freely in SQL (concatenation, CASE, subqueries, JOINs). Rows are handed to the AI unchanged. Supports n8n expressions. Read-only: SELECT or WITH ... SELECT only.',
+		'Return two columns: role (user, assistant or system) and content (the message text), oldest first. You can use expressions. SELECT only — nothing is ever saved or changed.',
 	typeOptions: {
 		editor: 'sqlEditor',
 		sqlDialect: 'PostgreSQL',
@@ -66,14 +65,42 @@ export const queryPropertyV11: INodeProperties = {
 	},
 };
 
-const MAPPING_PROMPT_NOTICE = `Need help? Paste this to any LLM: Help me configure an n8n "SQL Chat Memory" node (Table Mapping mode: read-only chat memory that loads past turns for an AI Agent as user/assistant/system messages, oldest-first, never writes). My table: [schema.table — fill in]. My columns (name — TYPE, as shown in the dropdowns above): [paste them here]. Tell me exactly what to set for: 1) Session Column + Session ID value (the column holding the conversation/session/user id, and the value or an expression like {{ $json.sessionId }}), 2) Ordering Column (a timestamp or incrementing id column; empty means auto-detect), 3) Role Column + Role Mappings (every column value mapped to user, assistant or system), 4) Limit (how many messages to return). Rules: output is chronological; only the three roles exist; the node never writes.`;
+const MAPPING_PROMPT_NOTICE = `Copy the text below into any AI chat (for example ChatGPT) after picking the Schema and Table above. It asks the AI to fill in every field for you, based on your table.
 
-const SQL_PROMPT_NOTICE = `Need help? Paste this to any LLM: Help me write the SQL for an n8n "SQL Chat Memory" node (Custom Query mode: read-only chat memory for an AI Agent; the query runs at Agent time and supports n8n expressions). My table: [schema.table — fill in]. My columns (name — TYPE): [paste them here]. Write ONE query returning exactly \`role\` (only user, assistant or system — map my values with CASE) and \`content\` (the final message text; build freely with concatenation, CASE, subqueries or JOINs), oldest rows first (ORDER BY time/id ASC), scoped with WHERE <session column> = {{ $json.sessionId }}. SELECT or WITH ... SELECT only — never write.`;
+---
+Help me set up an n8n "SQL Chat Memory" node. Goal: load past chat messages from one database table so an AI agent remembers the conversation. The node only reads; it never saves or changes anything.
+
+My table:
+- Schema and table: [fill in, as picked above]
+- Columns, with types exactly as shown in the dropdown lists above:
+  [list them here, for example: id - number, session_id - text, sender - text, message - text, created_at - date and time]
+
+Tell me exactly what to enter for each field:
+1. Session Column and Session ID — which column groups messages into one conversation, and which value (fixed text or an expression) picks the current conversation.
+2. Order Column — which date or number column puts the messages in order (or say if it can stay empty for automatic detection).
+3. Role Column and Role Mappings — which column says who wrote each message, and which value means the person (user), the AI (assistant) or an instruction (system).
+4. Max Messages — how many past messages to load (suggest a number).
+
+Rules: messages reach the AI oldest first; every sender value must be matched to exactly one of user, assistant, system.
+---`;
+
+const SQL_PROMPT_NOTICE = `Copy the text below into any AI chat (for example ChatGPT), together with your table name and columns. It asks the AI to write the query this node needs.
+
+---
+Write a read-only SELECT query for an n8n "SQL Chat Memory" node. The query must return exactly two columns:
+- role: who wrote the message — only user, assistant or system (translate my own values if needed).
+- content: the complete message text.
+
+List the oldest messages first. Keep only one conversation (filter on my conversation column and value). The query must never save, change or delete anything.
+
+My table and columns:
+[describe them here]
+---`;
 
 /**
  * Full v1.1 property list. Table Mapping mode is a fixed six-field flow
  * (Schema > Table > Session > Ordering > Role > Limit); Custom Query mode
- * is just the SQL field. Ends with a static copy-paste LLM prompt notice
+ * is just the SQL field. Ends with a static copy-paste AI prompt notice
  * per mode (buttons cannot return backend results in n8n, so there are none).
  */
 export const v11Properties: INodeProperties[] = [
@@ -89,17 +116,17 @@ export const v11Properties: INodeProperties[] = [
 		type: 'options',
 		noDataExpression: true,
 		default: 'table',
-		description: 'How the history is loaded: form-driven table mapping, or your own SQL.',
+		description: 'Load history using a table form, or your own SQL query.',
 		options: [
 			{
 				name: 'Table Mapping',
 				value: 'table',
-				description: 'Point at a table and map its columns — no SQL needed',
+				description: 'Pick a table and match its columns — no code needed',
 			},
 			{
 				name: 'Custom Query',
 				value: 'sql',
-				description: 'Write the SELECT yourself for full control',
+				description: 'Write your own query for full control',
 			},
 		],
 	},
@@ -110,7 +137,7 @@ export const v11Properties: INodeProperties[] = [
 		default: { mode: 'list', value: 'public' },
 		required: true,
 		placeholder: 'e.g. public',
-		description: 'The schema that contains the history table',
+		description: 'The schema that contains your chat table',
 		modes: [
 			{
 				displayName: 'From List',
@@ -138,7 +165,7 @@ export const v11Properties: INodeProperties[] = [
 		type: 'resourceLocator',
 		default: { mode: 'list', value: '' },
 		required: true,
-		description: 'The table that holds the conversation history',
+		description: 'The table where your chat messages are stored',
 		modes: [
 			{
 				displayName: 'From List',
@@ -166,7 +193,7 @@ export const v11Properties: INodeProperties[] = [
 		...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. session_id'),
 		default: '',
 		description:
-			'The column holding the conversation/session/user id. Leave empty to load all rows (single-conversation tables). Supports n8n expressions.',
+			'The column that groups messages into one conversation. Leave empty if the table holds a single conversation.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -180,7 +207,7 @@ export const v11Properties: INodeProperties[] = [
 		default: '',
 		placeholder: "{{ $json.sessionId }}",
 		description:
-			'Only rows matching this value are loaded (compared with =). Supports n8n expressions. Required when a Session Column is selected.',
+			'Load only messages with this value. You can type an expression such as {{ $json.sessionId }}. Required when a session column is picked above.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -188,12 +215,12 @@ export const v11Properties: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Ordering Column',
+		displayName: 'Order Column',
 		name: 'orderColumn',
 		...columnPicker('getColumns', ['schema.value', 'table.value'], 'e.g. created_at'),
 		default: '',
 		description:
-			'A timestamp or incrementing id column — newer messages have later timestamps / higher ids. Leave empty to auto-detect. History is always loaded most-recent-first and handed to the AI oldest-first.',
+			'The date or number column that puts messages in order. The newest messages are loaded. Leave empty to detect it automatically.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -207,7 +234,7 @@ export const v11Properties: INodeProperties[] = [
 		default: '',
 		required: true,
 		description:
-			'The column holding the sender/type. Map each of its values below to user, assistant or system.',
+			'The column that says who wrote each message. Then match each of its values below.',
 		displayOptions: {
 			show: {
 				mode: ['table'],
@@ -223,8 +250,7 @@ export const v11Properties: INodeProperties[] = [
 		},
 		placeholder: 'Add Mapping',
 		default: {},
-		description:
-			'Map every value of the Role Column to a chat role (e.g. sent → assistant, received → user). Unmapped values stop the run with a clear error naming the value.',
+		description: 'Match each value from the role column to who it stands for. Every value must be matched.',
 		options: [
 			{
 				displayName: 'Mapping',
@@ -234,7 +260,7 @@ export const v11Properties: INodeProperties[] = [
 						displayName: 'Table Value',
 						name: 'sourceValue',
 						type: 'options',
-						description: chooseFromListDescription,
+						description: 'A value from the role column',
 						default: '',
 						typeOptions: {
 							loadOptionsMethod: 'getRoleValues',
@@ -246,6 +272,7 @@ export const v11Properties: INodeProperties[] = [
 						name: 'role',
 						type: 'options',
 						noDataExpression: true,
+						description: 'Who this value means: the person, the AI, or an instruction',
 						default: 'user',
 						options: [
 							{ name: 'User', value: 'user' },
@@ -263,11 +290,11 @@ export const v11Properties: INodeProperties[] = [
 		},
 	},
 	{
-		displayName: 'Limit',
+		displayName: 'Max Messages',
 		name: 'limit',
 		type: 'number',
 		default: 50,
-		description: 'How many history messages to return (1–1000). Keep it small to protect the model context window.',
+		description: 'How many past messages to load (1–1000).',
 		typeOptions: {
 			minValue: 1,
 			maxValue: 1000,
@@ -281,7 +308,7 @@ export const v11Properties: INodeProperties[] = [
 	queryPropertyV11,
 	{
 		displayName:
-			'This node is read-only. It runs during AI Agent execution, converts each row to a LangChain message (user → Human, assistant → AI, system → System) in order, and never writes to the database. Persist new turns with your own INSERT downstream.',
+			'This node only reads — it never saves or changes anything. Save new messages with your own steps after the AI agent replies.',
 		name: 'readOnlyNotice',
 		type: 'notice',
 		default: '',
