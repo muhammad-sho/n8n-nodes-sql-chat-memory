@@ -55,7 +55,7 @@ describe('resolveOrderColumn', () => {
 	it('errors when nothing orderable exists and on unknown columns', () => {
 		assert.throws(
 			() => resolveOrderColumn([{ column_name: 't', data_type: 'text', udt_name: 'text', is_nullable: 'YES' }], []),
-			/Could not auto-detect an ordering column/,
+			/Could not auto-detect an order column/,
 		);
 		assert.throws(() => resolveOrderColumn(COLUMNS, [], 'nope'), /does not exist/);
 	});
@@ -74,7 +74,7 @@ describe('resolveContentColumn', () => {
 		assert.equal(resolveContentColumn(COLUMNS), 'message');
 		assert.throws(
 			() => resolveContentColumn([{ column_name: 'n', data_type: 'integer', udt_name: 'int4', is_nullable: 'YES' }]),
-			/Could not auto-detect a content column/,
+			/Could not auto-detect a message-text column/,
 		);
 	});
 });
@@ -106,7 +106,7 @@ describe('buildWhere', () => {
 
 	it('rejects empty columns and unknown operators', () => {
 		assert.throws(() => buildWhere([{ column: '', condition: 'equal', value: 1 }], 'AND'), /no column/);
-		assert.throws(() => buildWhere([{ column: 'id', condition: 'IN', value: 1 }], 'AND'), /unsupported operator/);
+		assert.throws(() => buildWhere([{ column: 'id', condition: 'IN', value: 1 }], 'AND'), /unsupported operator/i);
 	});
 });
 

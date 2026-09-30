@@ -71,7 +71,7 @@ After an AI Agent run, open the SQL Chat Memory sub-node (or the agent's executi
 ## Versions
 
 - **v1** (npm 0.1.0): SQL-only sub-node, frozen unchanged.
-- **v1.1** (npm 0.2.x–0.4.x): Table Mapping UI plus Custom Query. Existing v1 workflows keep working untouched. Any table/column naming works — identifiers are quoted, never judged against examples.
+- **v1.1** (npm 0.2.x–0.4.5): Table Mapping UI plus Custom Query. Existing v1 workflows keep working untouched. Any table/column naming works — identifiers are quoted, never judged against examples.
 
 ## Development
 

@@ -87,8 +87,8 @@ export function resolveOrderColumn(
 	if (integer) return { primary: integer.column_name };
 
 	throw new Error(
-		'Could not auto-detect an ordering column (no timestamp or integer column found). ' +
-			'Pick an Ordering Column explicitly or set Ordering to "None".',
+		'Could not auto-detect an order column (no timestamp or integer column found). ' +
+			'Pick an Order Column explicitly.',
 	);
 }
 
@@ -99,8 +99,8 @@ export function resolveContentColumn(columns: ColumnInfo[]): string {
 	if (preferred) return preferred.column_name;
 	if (textLike.length > 0) return textLike[0].column_name;
 	throw new Error(
-		'Could not auto-detect a content column (no text-like column found). ' +
-			'Switch Content Source to "Custom parts" and pick the columns explicitly.',
+		'Could not auto-detect a message-text column (no text-like column found). ' +
+			'Use Custom Query mode and build the content in SQL.',
 	);
 }
 
@@ -125,7 +125,7 @@ export function buildWhere(
 
 	conditions.forEach((condition, index) => {
 		if (!condition.column || String(condition.column).trim() === '') {
-			throw new Error(`Select Rows: condition ${index + 1} has no column selected.`);
+			throw new Error(`Filter condition ${index + 1} has no column selected.`);
 		}
 		const column = quoteIdent(String(condition.column));
 		if (condition.condition === 'IS NULL' || condition.condition === 'IS NOT NULL') {
@@ -134,7 +134,7 @@ export function buildWhere(
 		}
 		const operator = CONDITION_SQL[condition.condition];
 		if (operator === undefined) {
-			throw new Error(`Select Rows: unsupported operator "${condition.condition}".`);
+			throw new Error(`Unsupported operator "${condition.condition}".`);
 		}
 		values.push(condition.value ?? null);
 		parts.push(`${column} ${operator} $${values.length}`);

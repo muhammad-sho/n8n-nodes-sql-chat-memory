@@ -15,8 +15,8 @@ const baseDescription: INodeTypeBaseDescription = {
 /**
  * SQL Chat Memory — versioned entry point (kept at this path so the
  * package manifest and existing installs keep working).
- * v1 is frozen as published in 0.1.0; v1.1 adds Table Mapping, in-node
- * testing and copy-prompt buttons.
+ * v1 is frozen as published in 0.1.0; v1.1 adds Table Mapping, Custom Query
+ * format guidance, and debug output recording.
  */
 export class SqlChatMemory extends VersionedNodeType {
 	constructor() {

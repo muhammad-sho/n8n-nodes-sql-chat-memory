@@ -72,9 +72,33 @@ function fail(node: INode, itemIndex: number | undefined, message: string, descr
 	throw new NodeOperationError(node, message, { itemIndex, description });
 }
 
+/** Data-modifying keywords blocked outside literals (best-effort read-only guard). */
+const WRITE_WORDS = [
+	'INSERT',
+	'UPDATE',
+	'DELETE',
+	'MERGE',
+	'TRUNCATE',
+	'DROP',
+	'CREATE',
+	'ALTER',
+	'GRANT',
+	'REVOKE',
+	'COPY',
+	'VACUUM',
+	'CALL',
+	'DO',
+];
+
 /** Best-effort read-only guard for user SQL (v1.1 SQL mode). */
 export function assertReadOnlySql(sql: string, node: INode, itemIndex?: number): void {
-	const withoutComments = sql
+	// Strip quoted literals/identifiers first so keywords inside them can't
+	// cause false rejections (e.g. WHERE role <> 'update'), then comments.
+	const withoutLiterals = sql
+		.replace(/'(?:[^']|'')*'/g, "''")
+		.replace(/"(?:[^"]|"")*"/g, '""')
+		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/g, ' ');
+	const withoutComments = withoutLiterals
 		.replace(/--[^\n]*\n?/g, '\n')
 		.replace(/\/\*[\s\S]*?\*\//g, ' ')
 		.trim();
@@ -85,6 +109,16 @@ export function assertReadOnlySql(sql: string, node: INode, itemIndex?: number):
 			itemIndex,
 			'Only SELECT queries are allowed',
 			'This node is strictly read-only. The query must start with SELECT (or WITH ... SELECT). Writes belong in a downstream node, e.g. a database INSERT you control.',
+		);
+	}
+	// WITH ... SELECT can still hide a write (e.g. WITH x AS (INSERT ... RETURNING *) SELECT ...).
+	const forbidden = WRITE_WORDS.find((word) => new RegExp(`\\b${word}\\b`, 'i').test(withoutComments));
+	if (forbidden) {
+		fail(
+			node,
+			itemIndex,
+			'Data-modifying statements are not allowed',
+			`Found "${forbidden}". This node is strictly read-only, including writes hidden inside WITH clauses.`,
 		);
 	}
 }
@@ -135,9 +169,9 @@ function readTableParams(ctx: FetchContext, itemIndex: number): TableParams {
 function wrapResolve<T>(node: INode, itemIndex: number | undefined, what: string, fn: () => T): T {
 	try {
 		return fn();
-	} catch (error) {
+	} 	catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		fail(node, itemIndex, `${what}: ${message}`, 'Adjust the Table Mapping settings (a hint below shows the executed SQL).');
+		fail(node, itemIndex, `${what}: ${message}`, 'Adjust the Table Mapping settings above.');
 	}
 }
 
@@ -228,7 +262,7 @@ async function fetchTableMode(
 			limit: params.limit,
 		});
 
-	 let rows: DbRow[];
+		let rows: DbRow[];
 		try {
 			const result = await db.query(sql, values);
 			if (!Array.isArray(result.rows)) {
