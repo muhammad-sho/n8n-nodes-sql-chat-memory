@@ -8,6 +8,7 @@ import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { sharedBase, postgresCredentials, v11Properties } from './descriptions';
 import { fetchMappedMessages, type FetchContext } from './fetch';
+import { recordSuppliedMessages } from './runData';
 import {
 	getColumns,
 	getRoleValues,
@@ -54,6 +55,7 @@ export class SqlChatMemoryV11 implements INodeType {
 	 */
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const { messages } = await fetchMappedMessages(this as unknown as FetchContext, itemIndex);
+		recordSuppliedMessages(this, messages);
 		return { response: new SqlChatReadOnlyMemory(messages) };
 	}
 }

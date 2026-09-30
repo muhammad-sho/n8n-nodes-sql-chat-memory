@@ -64,6 +64,10 @@ SQL Chat Memory ──────┐
 
 Persist new turns with your own downstream INSERT. This node only reads.
 
+## Debugging
+
+After an AI Agent run, open the SQL Chat Memory sub-node (or the agent's execution log): the exact messages handed to the AI are recorded there as `{ role, content }` rows — the same shape as the Custom Query output. The node stays a pure memory sub-node with no Main input/output.
+
 ## Versions
 
 - **v1** (npm 0.1.0): SQL-only sub-node, frozen unchanged.

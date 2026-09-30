@@ -10,6 +10,7 @@ import { withPgClient, type Queryable } from './db';
 import { sharedBase, postgresCredentials } from './descriptions';
 import { SqlChatReadOnlyMemory } from './memory';
 import { rowsToMessages } from './messageMapper';
+import { recordSuppliedMessages } from './runData';
 import type { PostgresCredentials, SqlChatRow } from './types';
 
 /**
@@ -102,6 +103,7 @@ export class SqlChatMemoryV1 implements INodeType {
 
 		const messages = rowsToMessages(rows as SqlChatRow[], node, itemIndex);
 		const memory = new SqlChatReadOnlyMemory(messages);
+		recordSuppliedMessages(this, messages);
 
 		return { response: memory };
 	}
