@@ -8,8 +8,6 @@ const {
 	mapTableRows,
 	resolveRole,
 	toText,
-	extractTemplateNames,
-	renderContentTemplate,
 } = require('../dist/nodes/SqlChatMemory/messageMapper.js');
 const {
 	HumanMessage,
@@ -64,51 +62,18 @@ describe('toText', () => {
 });
 
 describe('resolveRole', () => {
-	it('prefers explicit mappings (case-insensitive) over auto', () => {
-		const explicit = [{ from: 'sent', to: 'assistant' }];
+	it('matches explicit mappings case-insensitively and nothing else', () => {
+		const explicit = [
+			{ from: 'sent', to: 'assistant' },
+			{ from: 'User', to: 'user' },
+		];
 		assert.equal(resolveRole('SENT', explicit, fakeNode, 0), 'assistant');
 		assert.equal(resolveRole('user', explicit, fakeNode, 0), 'user');
-		assert.equal(resolveRole('ai', [], fakeNode, 0), 'assistant');
-		assert.equal(resolveRole('human', [], fakeNode, 0), 'user');
 	});
 
-	it('errors with guidance on unknown values', () => {
+	it('errors with guidance on unknown values (no automatic mapping)', () => {
+		assert.throws(() => resolveRole('ai', [], fakeNode, 0), /unsupported role "ai"/);
 		assert.throws(() => resolveRole('bot', [], fakeNode, 3), /Row 3 has unsupported role "bot"/);
-	});
-});
-
-describe('extractTemplateNames', () => {
-	it('lists placeholders in order, deduplicated, ignoring other braces', () => {
-		assert.deepEqual(
-			extractTemplateNames('{{message}} (replying to: "{{quoted}}", id: "{{id}}") and {{message}} again {not-a-placeholder}'),
-			['message', 'quoted', 'id'],
-		);
-		assert.deepEqual(extractTemplateNames('plain text'), []);
-	});
-});
-
-describe('renderContentTemplate', () => {
-	it('renders columns, lookups, fallbacks and empty unknowns', () => {
-		const lookups = new Map([
-			['quoted', { values: new Map([['7', 'original text']]), fallback: '(no quote)', localColumn: 'quoted_message_id' }],
-		]);
-		assert.equal(
-			renderContentTemplate('{{message}} (replying to: "{{quoted}}", id: "{{id}}")', { message: 'hi', quoted_message_id: 7, id: 54 }, lookups),
-			'hi (replying to: "original text", id: "54")',
-		);
-		assert.equal(
-			renderContentTemplate('{{message}} (replying to: "{{quoted}}")', { message: 'hi', quoted_message_id: 404 }, lookups),
-			'hi (replying to: "(no quote)")',
-		);
-		assert.equal(
-			renderContentTemplate('{{message}}{{missing}}', { message: 'hi' }, new Map()),
-			'hi',
-		);
-	});
-
-	it('prefers row columns over same-named lookups', () => {
-		const lookups = new Map([['message', { values: new Map(), fallback: 'fb', localColumn: 'x' }]]);
-		assert.equal(renderContentTemplate('{{message}}', { message: 'row wins' }, lookups), 'row wins');
 	});
 });
 
@@ -119,11 +84,10 @@ describe('mapTableRows (Table Mapping mode)', () => {
 			{ from: 'sent', to: 'assistant' },
 			{ from: 'received', to: 'user' },
 		],
-		template: '{{message}}',
-		lookups: [],
+		contentColumn: 'message',
 	};
 
-	it('maps rows in order using explicit + auto roles', () => {
+	it('maps rows in order with the content column as-is', () => {
 		const msgs = mapTableRows(
 			[
 				{ direction: 'received', message: 'hi' },
@@ -136,30 +100,13 @@ describe('mapTableRows (Table Mapping mode)', () => {
 		assert.equal(msgs.length, 2);
 		assert.ok(msgs[0] instanceof HumanMessage);
 		assert.ok(msgs[1] instanceof AIMessage);
+		assert.equal(msgs[0].content, 'hi');
+		assert.equal(msgs[1].content, 'hello');
 	});
 
-	it('injects per-message context through the template', () => {
-		const msgs = mapTableRows(
-			[{ direction: 'sent', id: 54, message: 'hello, i need to cancel', quoted_message_id: 7 }],
-			{
-				roleColumn: 'direction',
-				explicitRoles: [{ from: 'sent', to: 'assistant' }],
-				template: '{{message}} (replying to: "{{quoted}}", message id: "{{id}}")',
-				lookups: [
-					{
-						name: 'quoted', lookupTable: 'messages', localColumn: 'quoted_message_id',
-						foreignColumn: 'id', valueColumn: 'message', fallback: '',
-						lookupValues: new Map([['7', 'this is AI support, how can i help?']]),
-					},
-				],
-			},
-			fakeNode,
-			0,
-		);
-		assert.equal(
-			msgs[0].content,
-			'hello, i need to cancel (replying to: "this is AI support, how can i help?", message id: "54")',
-		);
+	it('coerces empty content to an empty message instead of failing', () => {
+		const msgs = mapTableRows([{ direction: 'sent', message: null }], config, fakeNode, 0);
+		assert.equal(msgs[0].content, '');
 	});
 
 	it('errors clearly on missing role values and unmapped roles', () => {

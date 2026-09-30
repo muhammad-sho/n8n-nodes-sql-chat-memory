@@ -65,29 +65,24 @@ const TABLE_PARAMS = {
 	mode: 'table',
 	schema: { mode: 'list', value: 'public' },
 	table: { mode: 'list', value: 'messages' },
-	where: {},
-	combineConditions: 'AND',
-	ordering: 'auto',
+	sessionColumn: 'chat_id',
+	sessionValue: 's1',
 	orderColumn: '',
-	loadMode: 'recent',
 	limit: 50,
-	roleColumn: '',
+	roleColumn: 'direction',
 	roleMappings: {
 		mappings: [
 			{ sourceValue: 'sent', role: 'assistant' },
 			{ sourceValue: 'received', role: 'user' },
 		],
 	},
-	contentMode: 'auto',
-	contentTemplate: '',
-	contentLookups: {},
 };
 
 describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
 	let mock;
 	afterEach(() => mock?.restore());
 
-	it('auto-detects role/order/content, reverses recent-first rows, adds hints', async () => {
+	it('loads newest-first and hands chronological messages to the AI, with hints', async () => {
 		const historyRows = [
 			{ direction: 'sent', message: 'second' },
 			{ direction: 'received', message: 'first' },
@@ -106,72 +101,54 @@ describe('fetchMappedMessages — Table Mapping mode (mocked pg)', () => {
 		// DB returned newest-first (DESC); memory must be chronological.
 		assert.equal(vars.chat_history[0].content, 'first');
 		assert.equal(vars.chat_history[1].content, 'second');
-		assert.match(mock.seen.queries.map((q) => q.text).join(' '), /ORDER BY "created_at" DESC/);
+		const main = mock.seen.queries.find((q) => q.text.includes('FROM "public"."messages"'));
+		assert.match(main.text, /WHERE "chat_id" = \$1/);
+		assert.deepEqual(main.values, ['s1']);
+		assert.match(main.text, /ORDER BY "created_at" DESC/);
+		assert.match(main.text, /LIMIT 50/);
 		assert.ok(hints.some((h) => String(h.message).includes('SQL Chat Memory executed:')));
-		assert.ok(hints.some((h) => String(h.message).includes('role=direction')));
+		assert.ok(hints.some((h) => String(h.message).includes('content=message')));
 		// Read-only: nothing extra was written.
 		await out.response.saveContext({ input: 'x' }, { output: 'y' });
 		assert.equal((await out.response.loadMemoryVariables({})).chat_history.length, 2);
 	});
 
-	it('resolves lookups with a single batched ANY query', async () => {
-		const historyRows = [
-			{ direction: 'sent', id: 54, message: 'reply', quoted_message_id: 7 },
-			{ direction: 'received', id: 55, message: 'plain', quoted_message_id: null },
-		];
-		let lookupCalls = 0;
-		mock = installFakeClient((text) => {
-			if (text.includes('information_schema.columns')) return { rows: CATALOG.messages };
-			if (text.includes('pg_index')) return { rows: [{ name: 'id' }] };
-			if (text.includes('__key')) {
-				lookupCalls += 1;
-				assert.match(text, /= ANY\(\$1\)/);
-				return { rows: [{ __key: 7, __value: 'original text' }] };
-			}
-			return { rows: historyRows };
-		});
-		const params = {
-			...TABLE_PARAMS,
-			contentMode: 'custom',
-			contentTemplate: '{{message}} (replying to: "{{quoted}}", message id: "{{id}}")',
-			contentLookups: {
-				lookups: [
-					{
-						name: 'quoted', lookupTable: 'messages', localColumn: 'quoted_message_id',
-						foreignColumn: 'id', valueColumn: 'message', fallback: '',
-					},
-				],
-			},
-		};
-		const node = new SqlChatMemoryV11();
-		const out = await node.supplyData.call(makeCtx({ params }), 0);
-		const vars = await out.response.loadMemoryVariables({});
-		assert.equal(lookupCalls, 1, 'exactly one batched lookup query');
-		assert.equal(vars.chat_history[1].content, 'reply (replying to: "original text", message id: "54")');
-		assert.equal(vars.chat_history[0].content, 'plain (replying to: "", message id: "55")');
-	});
-
-	it('applies where filters as bound parameters', async () => {
+	it('skips the filter when no session column is selected', async () => {
 		mock = installFakeClient((text) => {
 			const base = catalogHandler()(text);
 			if (base.rows.length > 0 || text.includes('information_schema') || text.includes('pg_index')) return base;
 			return { rows: [] };
 		});
-		const params = {
-			...TABLE_PARAMS,
-			where: { values: [{ column: 'chat_id', condition: 'equal', value: 's1' }] },
-		};
-		await new SqlChatMemoryV11().supplyData.call(makeCtx({ params }), 0);
-		const main = mock.seen.queries.find((q) => q.text.startsWith('SELECT "direction"'));
-		assert.match(main.text, /WHERE "chat_id" = \$1/);
-		assert.deepEqual(main.values, ['s1']);
+		await new SqlChatMemoryV11().supplyData.call(
+			makeCtx({ params: { ...TABLE_PARAMS, sessionColumn: '', sessionValue: 's1' } }),
+			0,
+		);
+		const main = mock.seen.queries.find((q) => q.text.includes('FROM "public"."messages"'));
+		assert.doesNotMatch(main.text, /WHERE/);
 	});
 
-	it('errors clearly without a table and on unmapped roles', async () => {
+	it('fails fast on a selected column with an empty session value', async () => {
+		mock = installFakeClient(() => ({ rows: [] }));
+		await assert.rejects(
+			new SqlChatMemoryV11().supplyData.call(
+				makeCtx({ params: { ...TABLE_PARAMS, sessionValue: '   ' } }),
+				0,
+			),
+			/Session ID is empty/,
+		);
+		assert.ok(!mock.seen.queries.some((q) => q.text.includes('FROM "public"."messages"')), 'no history query ran');
+	});
+
+	it('requires a role column and reports unmapped roles', async () => {
 		const node = new SqlChatMemoryV11();
+		mock = installFakeClient(() => ({ rows: [] }));
 		await assert.rejects(
 			node.supplyData.call(makeCtx({ params: { ...TABLE_PARAMS, table: '' } }), 0),
 			/Select a Schema and Table first/,
+		);
+		await assert.rejects(
+			node.supplyData.call(makeCtx({ params: { ...TABLE_PARAMS, roleColumn: '' } }), 0),
+			/Select a Role Column/,
 		);
 
 		mock = installFakeClient((text) => {

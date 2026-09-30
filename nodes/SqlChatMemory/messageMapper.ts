@@ -2,18 +2,9 @@ import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langc
 import type { INode } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { ChatRole, ContentLookup, DbRow, RoleMapping, SqlChatRow } from './types';
+import type { ChatRole, DbRow, RoleMapping, SqlChatRow } from './types';
 
 export const SUPPORTED_ROLES: readonly ChatRole[] = ['user', 'assistant', 'system'];
-
-/** Values the auto role recognizer understands (case-insensitive). */
-const AUTO_ROLE_ALIASES: Record<string, ChatRole> = {
-	user: 'user',
-	human: 'user',
-	assistant: 'assistant',
-	ai: 'assistant',
-	system: 'system',
-};
 
 /**
  * Convert SQL rows to LangChain chat messages (Custom Query mode).
@@ -105,7 +96,7 @@ function toMessage(role: ChatRole, text: string): BaseMessage {
 	}
 }
 
-/** Resolve a raw role value: explicit mappings win, then auto-recognition. */
+/** Resolve a raw role value against the explicit mappings (case-insensitive). */
 export function resolveRole(
 	rawRole: unknown,
 	explicit: RoleMapping[],
@@ -122,82 +113,23 @@ export function resolveRole(
 		}
 	}
 
-	const auto = AUTO_ROLE_ALIASES[lowered];
-	if (auto) return auto;
-
 	throw new NodeOperationError(node, `Row ${rowIndex} has unsupported role "${String(rawRole)}"`, {
 		itemIndex,
 		description:
 			`Supported roles are: ${SUPPORTED_ROLES.join(', ')}. ` +
-			`Add a Role Mapping for "${normalized}" (e.g. "${normalized}" → assistant) or fix the Role Column.`,
-	});
-}
-
-const PLACEHOLDER_PATTERN = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
-
-/**
- * List the placeholder names used in a content template, in order of first
- * appearance, e.g. `{{message}} (replying to "{{quoted}}")` -> ["message", "quoted"].
- * Anything that is not a `{{name}}` placeholder is left untouched.
- */
-export function extractTemplateNames(template: string): string[] {
-	const names: string[] = [];
-	const seen = new Set<string>();
-	PLACEHOLDER_PATTERN.lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = PLACEHOLDER_PATTERN.exec(template)) !== null) {
-		if (!seen.has(match[1])) {
-			seen.add(match[1]);
-			names.push(match[1]);
-		}
-	}
-	return names;
-}
-
-export interface ResolvedLookup {
-	values: Map<string, string>;
-	fallback: string;
-	localColumn: string;
-}
-
-/**
- * Render a content template for one row. `{{name}}` resolves to the row's
- * column first, then to a named lookup; unknown names render as an empty
- * string, and missing lookup keys fall back to the lookup's fallback text.
- */
-export function renderContentTemplate(
-	template: string,
-	row: DbRow,
-	lookups: Map<string, ResolvedLookup>,
-): string {
-	PLACEHOLDER_PATTERN.lastIndex = 0;
-	return template.replace(PLACEHOLDER_PATTERN, (_whole, name: string) => {
-		const columnValue = row[name];
-		if (columnValue !== undefined && columnValue !== null && columnValue !== '') {
-			return toText(columnValue);
-		}
-		const lookup = lookups.get(name);
-		if (!lookup) return '';
-		const key = row[lookup.localColumn];
-		if (key !== undefined && key !== null && key !== '') {
-			const hit = lookup.values.get(String(key));
-			if (hit !== undefined) return hit;
-		}
-		return lookup.fallback;
+			`Add a Role Mapping for "${normalized}" (e.g. "${normalized}" → assistant).`,
 	});
 }
 
 export interface TableMapConfig {
 	roleColumn: string;
 	explicitRoles: RoleMapping[];
-	template: string;
-	lookups: ContentLookup[];
+	contentColumn: string;
 }
 
 /**
  * Convert Table Mapping mode rows to LangChain messages, preserving row order.
- * Content is rendered from the template; each `{{name}}` pulls the row's
- * column or the named lookup (lookups carry their pre-fetched value maps).
+ * Content is the auto-detected text column, rendered as-is per row.
  */
 export function mapTableRows(
 	rows: DbRow[],
@@ -234,15 +166,8 @@ export function mapTableRows(
 		}
 
 		const role = resolveRole(rawRole, config.explicitRoles, node, index, itemIndex);
-		const lookups = new Map<string, ResolvedLookup>();
-		for (const lookup of config.lookups) {
-			lookups.set(lookup.name, {
-				values: lookup.lookupValues ?? new Map<string, string>(),
-				fallback: lookup.fallback ?? '',
-				localColumn: lookup.localColumn,
-			});
-		}
-		const text = renderContentTemplate(config.template, row as DbRow, lookups);
+		const rawContent = (row as DbRow)[config.contentColumn];
+		const text = rawContent === undefined || rawContent === null ? '' : toText(rawContent);
 		return toMessage(role, text);
 	});
 }

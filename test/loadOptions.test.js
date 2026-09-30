@@ -113,44 +113,4 @@ describe('loadOptions', () => {
 		const options = await loaders.getRoleValues.call(loadCtx({ params: BASE_PARAMS }));
 		assert.deepEqual(options, [{ name: 'Select a Role Column first…', value: '' }]);
 	});
-
-	it('getLookupTables excludes the history table; getLookupColumns reads the sibling', async () => {
-		mock = installFakeClient();
-		const tables = await loaders.getLookupTables.call(loadCtx({ params: BASE_PARAMS }));
-		assert.deepEqual(tables, [{ name: 'quotes', value: 'quotes' }]);
-		const columns = await loaders.getLookupColumns.call(
-			loadCtx({ params: BASE_PARAMS, currentParams: { '&lookupTable': 'quotes' } }),
-		);
-		assert.deepEqual(columns.map((c) => c.value), ['id', 'text']);
-	});
-});
-
-describe('actionHandler (copy-prompt buttons)', () => {
-	let mock;
-	afterEach(() => mock?.restore());
-
-	it('buildMappingPrompt requires a table and echoes config', async () => {
-		mock = installFakeClient();
-		await assert.rejects(
-			loaders.buildMappingPrompt.call(loadCtx({ params: { schema: BASE_PARAMS.schema, table: '' } })),
-			/Select a Schema and Table first/,
-		);
-		const prompt = await loaders.buildMappingPrompt.call(
-			loadCtx({ params: { ...BASE_PARAMS, roleColumn: 'direction', limit: 20 } }),
-		);
-		assert.match(prompt, /"public"\."messages"/);
-		assert.match(prompt, /direction \(USER-DEFINED/);
-		assert.match(prompt, /sent, received/);
-		assert.match(prompt, /Role Column: direction/);
-		assert.match(prompt, /Limit: 20/);
-	});
-
-	it('buildSqlPrompt includes the contract and current SQL', async () => {
-		mock = installFakeClient();
-		const prompt = await loaders.buildSqlPrompt.call(
-			loadCtx({ params: { ...BASE_PARAMS, query: 'SELECT role, content FROM t' } }),
-		);
-		assert.match(prompt, /exactly two columns named `role` and `content`/);
-		assert.match(prompt, /SELECT role, content FROM t/);
-	});
 });

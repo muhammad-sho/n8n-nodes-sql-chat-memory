@@ -31,21 +31,6 @@ export interface ColumnInfo {
 	is_nullable: string;
 }
 
-/**
- * A named lookup for content templates: `{{name}}` resolves to a value
- * fetched from another table via the row's local key column.
- */
-export interface ContentLookup {
-	name: string;
-	lookupTable: string;
-	localColumn: string;
-	foreignColumn: string;
-	valueColumn: string;
-	fallback: string;
-	/** Resolved at fetch time: local key value -> looked-up text. */
-	lookupValues?: Map<string, string>;
-}
-
 /** Explicit role mapping entry: table value -> chat role. */
 export interface RoleMapping {
 	from: string;

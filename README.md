@@ -6,24 +6,29 @@ Read-only AI Chat Memory for n8n. Loads conversation history from PostgreSQL —
 
 `Table/SQL → rows → LangChain chat messages → AI Agent memory`
 
-- Appears as an **AI Memory** node. Connect its **Memory** output to an **AI Agent's Memory** input.
+- A pure AI sub-node: connect its **Memory** output to an **AI Agent's Memory** input. It receives its data context (e.g. previous nodes' items for expressions like `{{ $json.sessionId }}`) through that connection — no Main input/output.
 - Uses the standard n8n **Postgres** credential.
-- Runs during AI Agent execution (`supplyData`); converts rows in order:
+- Runs during AI Agent execution; converts rows in order:
   - `user` → `HumanMessage`
   - `assistant` → `AIMessage`
   - `system` → `SystemMessage`
 - Strictly read-only: never saves, updates, inserts, caches, or auto-persists. No polling, session management, or schema creation.
 
-## Modes (v1.1)
+## Table Mapping mode (direct mapping, no SQL)
 
-**Table Mapping** (default, no SQL needed): pick Schema + Table from dropdowns, optionally add Select Rows filters (e.g. a session/user/chat id column = `{{ $json.sessionId }}`), pick ordering (auto-detected: timestamp, else integer key), History Window (Most Recent N / Oldest N) and Limit. Then map:
+Six fields, top to bottom:
 
-- **Role Column** (+ Role Mappings for custom values like `sent → assistant`, `received → user`; standard names are auto-recognized),
-- **Message text**: auto-detected, or a **Content Template** with `{{column}}` placeholders — e.g. `{{message}} (replying to: "{{quoted}}", message id: "{{id}}")` — so per-message context (quoted text, ids, labels) is injected into the content itself. Placeholders can also pull from another table via named **Content Lookups** (one batched query each, e.g. a quoted message by id; missing keys render the lookup's fallback text).
+1. **Schema** / 2. **Table** — dropdowns listing what the credential can see (or typed names).
+3. **Session Column** + **Session ID** — the column holding the conversation/session/user id, and the value (or an expression like `{{ $json.sessionId }}`). Leave the column empty to load all rows. A selected column with an empty value stops the run instead of leaking other sessions.
+4. **Ordering Column** — a timestamp or incrementing id column (newer messages = later timestamps / higher ids). Leave empty to auto-detect. History is always loaded most-recent-first and handed to the AI oldest-first.
+5. **Role Column** (required) + **Role Mappings** — map every column value to `user`, `assistant` or `system` (e.g. `sent → assistant`, `received → user`). The dropdown shows each value with its type. Unmapped values stop the run naming the value — nothing is guessed.
+6. **Limit** — how many messages to return (1–1000, default 50).
 
-Every mapping field defaults to auto-detect with an explicit override. The executed SQL is shown in the run's hints.
+At runtime the node runs exactly one history `SELECT` (plus one tiny catalog read only when Ordering is left on auto-detect). Dropdown population queries only ever run while you configure the node — never per execution. The executed SQL is shown in the run's hints.
 
-**Custom Query**: write the SELECT yourself. It must return exactly `role` (`user`/`assistant`/`system`) + `content`, oldest rows first. Rows are handed to the AI unchanged. Read-only: `SELECT`/`WITH ... SELECT` only.
+## Custom Query mode (advanced)
+
+Only the **SQL Query** field. Write whatever you need — filtering, JOINs, quoted-message lookups, content built with concatenation/CASE — as long as it returns exactly `role` (`user`/`assistant`/`system`) + `content`, oldest rows first. Rows are handed to the AI unchanged. Supports n8n expressions. Read-only: `SELECT`/`WITH ... SELECT` only.
 
 ```sql
 SELECT role, content
@@ -33,15 +38,16 @@ ORDER BY created_at ASC
 LIMIT 50;
 ```
 
-The SQL is responsible for filtering, ordering, limiting, transforming, and selecting history. Missing `role`/`content` or an unsupported `role` produces a clear node error.
+Missing `role`/`content` or an unsupported `role` produces a clear node error.
 
-## Testing
+## Ask an LLM for help
 
-The node is a pure AI sub-node (Memory output only — no Main input/output). It receives its data context through the AI Agent connection, so expressions like `{{ $json.sessionId }}` resolve against the Agent's input items. To test: run the workflow (or Test the Agent step) with representative input and inspect the Agent's `chat_history` usage; the exact SQL the node executed is shown in the run's hints.
+Each mode page ends with a static, copy-paste prompt notice (n8n buttons cannot run backend code, so there is deliberately no button — the prompt text is directly selectable). Fill in your table/columns and paste it to any LLM:
 
-## Copy Prompt to Ask LLM (v1.1)
+- Table Mapping page: asks for the six field values above.
+- Custom Query page: asks for the `role`+`content` SELECT.
 
-At the end of the node (one button per mode page) sits **Copy Prompt to Ask LLM**. Select Schema + Table first, then click: the node reads your table's columns, types, and role values, combines them with your current settings, and builds a ready-to-paste prompt that tells an LLM exactly how to configure the mapping — or which SELECT to write — for your custom table format.
+Full annotated versions live in this README's history: the Table Mapping prompt needs your columns (visible with types in the dropdowns above); the SQL prompt needs your table shape pasted in.
 
 ## Intended workflow
 
@@ -65,7 +71,7 @@ Persist new turns with your own downstream INSERT. This node only reads.
 ## Versions
 
 - **v1** (npm 0.1.0): SQL-only sub-node, frozen unchanged.
-- **v1.1** (npm 0.2.x): Table Mapping UI plus copy-prompt buttons. Existing v1 workflows keep working untouched. Any table/column naming works — identifiers are quoted, never judged against examples.
+- **v1.1** (npm 0.2.x–0.4.x): Table Mapping UI plus Custom Query. Existing v1 workflows keep working untouched. Any table/column naming works — identifiers are quoted, never judged against examples.
 
 ## Development
 
@@ -80,5 +86,5 @@ npm test
 1. Push to GitHub (`main` branch).
 2. Repo **Settings → Secrets and variables → Actions** holds `NPM_TOKEN` (npm Automation token).
 3. Bump `version` in `package.json` for every release (npm rejects re-publishing a version).
-4. Create a GitHub **Release** (tag like `v0.2.0`). Publishing runs automatically (`npm publish --access public`).
+4. Create a GitHub **Release** (tag like `v0.4.0`). Publishing runs automatically (`npm publish --access public`).
 5. Install in n8n via **Settings → Community nodes → Install**: `n8n-nodes-sql-chat-memory`.

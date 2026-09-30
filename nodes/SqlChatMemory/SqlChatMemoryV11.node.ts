@@ -9,11 +9,7 @@ import { NodeConnectionTypes } from 'n8n-workflow';
 import { sharedBase, postgresCredentials, v11Properties } from './descriptions';
 import { fetchMappedMessages, type FetchContext } from './fetch';
 import {
-	buildMappingPrompt,
-	buildSqlPrompt,
 	getColumns,
-	getLookupColumns,
-	getLookupTables,
 	getRoleValues,
 	getSchemas,
 	getTables,
@@ -44,16 +40,10 @@ export class SqlChatMemoryV11 implements INodeType {
 		loadOptions: {
 			getColumns,
 			getRoleValues,
-			getLookupTables,
-			getLookupColumns,
 		},
 		listSearch: {
 			getSchemas,
 			getTables,
-		},
-		actionHandler: {
-			buildMappingPrompt,
-			buildSqlPrompt,
 		},
 	};
 

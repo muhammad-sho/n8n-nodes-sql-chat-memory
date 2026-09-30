@@ -5,7 +5,6 @@ const assert = require('node:assert/strict');
 
 const {
 	buildHistoryQuery,
-	buildLookupQuery,
 	buildWhere,
 	resolveContentColumn,
 	resolveOrderColumn,
@@ -62,19 +61,17 @@ describe('resolveOrderColumn', () => {
 	});
 });
 
-describe('resolveRoleColumn / resolveContentColumn', () => {
-	it('auto-detects by name and honors selection', () => {
-		assert.equal(resolveRoleColumn(COLUMNS, undefined), 'direction');
-		assert.equal(resolveRoleColumn(COLUMNS, 'chat_id'), 'chat_id');
-		assert.equal(resolveContentColumn(COLUMNS), 'message');
+describe('resolveRoleColumn', () => {
+	it('requires an explicit selection validated against the catalog', () => {
+		assert.equal(resolveRoleColumn(COLUMNS, 'direction'), 'direction');
+		assert.throws(() => resolveRoleColumn(COLUMNS, ''), /does not exist/);
+		assert.throws(() => resolveRoleColumn(COLUMNS, 'nope'), /does not exist/);
 	});
+});
 
-	it('errors helpfully when detection fails', () => {
-		const noNames = [
-			{ column_name: 'a', data_type: 'text', udt_name: 'text', is_nullable: 'YES' },
-			{ column_name: 'n', data_type: 'integer', udt_name: 'int4', is_nullable: 'YES' },
-		];
-		assert.throws(() => resolveRoleColumn(noNames, undefined), /Could not auto-detect the role column/);
+describe('resolveContentColumn', () => {
+	it('prefers message-like names, else the first text column', () => {
+		assert.equal(resolveContentColumn(COLUMNS), 'message');
 		assert.throws(
 			() => resolveContentColumn([{ column_name: 'n', data_type: 'integer', udt_name: 'int4', is_nullable: 'YES' }]),
 			/Could not auto-detect a content column/,
@@ -145,21 +142,5 @@ describe('buildHistoryQuery', () => {
 			limit: 0,
 		});
 		assert.equal(text, 'SELECT "message" FROM "public"."messages" LIMIT 1');
-	});
-});
-
-describe('buildLookupQuery', () => {
-	it('builds a single batched ANY query', () => {
-		const { text, values } = buildLookupQuery({
-			schema: 'public',
-			table: 'messages',
-			foreignColumn: 'id',
-			valueColumn: 'message',
-		});
-		assert.equal(
-			text,
-			'SELECT "id" AS __key, "message" AS __value FROM "public"."messages" WHERE "id" = ANY($1)',
-		);
-		assert.deepEqual(values, []);
 	});
 });

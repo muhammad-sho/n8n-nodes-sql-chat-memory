@@ -19,7 +19,6 @@ const TIMESTAMP_TYPES = new Set([
 ]);
 const INTEGER_TYPES = new Set(['smallint', 'integer', 'bigint', 'smallserial', 'serial', 'bigserial']);
 
-const ROLE_NAME_HINT = /^(role|type|direction|sender|sent_by|from|author|speaker|role_name|message_type)$/i;
 const CONTENT_NAME_HINT = /(message|content|body|text)/i;
 
 export function isTextColumn(column: ColumnInfo): boolean {
@@ -36,24 +35,15 @@ function columnNames(columns: ColumnInfo[]): string[] {
 	return columns.map((column) => column.column_name);
 }
 
-/** Resolve the role column: explicit selection wins, otherwise auto-detect by name. */
-export function resolveRoleColumn(columns: ColumnInfo[], selected?: string): string {
+/** Resolve the role column: the user always picks it explicitly. */
+export function resolveRoleColumn(columns: ColumnInfo[], selected: string): string {
 	const names = columnNames(columns);
-	if (selected) {
-		if (!names.includes(selected)) {
-			throw new Error(
-				`Role column "${selected}" does not exist. Available text columns: ${names.filter((name) => columns.some((c) => c.column_name === name && isTextColumn(c))).join(', ') || '(none)'}`,
-			);
-		}
-		return selected;
+	if (!names.includes(selected)) {
+		throw new Error(
+			`Role column "${selected}" does not exist. Available text columns: ${names.filter((name) => columns.some((c) => c.column_name === name && isTextColumn(c))).join(', ') || '(none)'}`,
+		);
 	}
-	const candidates = columns.filter(isTextColumn);
-	const byName = candidates.find((column) => ROLE_NAME_HINT.test(column.column_name));
-	if (byName) return byName.column_name;
-	throw new Error(
-		'Could not auto-detect the role column. ' +
-			`Pick it explicitly. Text-like columns: ${candidates.map((c) => c.column_name).join(', ') || '(none)'}`,
-	);
+	return selected;
 }
 
 export interface ResolvedOrder {
@@ -194,18 +184,4 @@ export function buildHistoryQuery(params: HistoryQueryParams): BuiltQuery {
 
 	text += ` LIMIT ${limit}`;
 	return { text, values };
-}
-
-/** Build the single batched lookup query (keys bound as one array parameter). */
-export function buildLookupQuery(params: {
-	schema: string;
-	table: string;
-	foreignColumn: string;
-	valueColumn: string;
-}): BuiltQuery {
-	const text =
-		`SELECT ${quoteIdent(params.foreignColumn)} AS __key, ${quoteIdent(params.valueColumn)} AS __value ` +
-		`FROM ${quoteIdent(params.schema)}.${quoteIdent(params.table)} ` +
-		`WHERE ${quoteIdent(params.foreignColumn)} = ANY($1)`;
-	return { text, values: [] };
 }

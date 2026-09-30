@@ -22,17 +22,6 @@ function collectDynamicRefs(properties, refs = { loadOptions: new Set(), search:
 	return refs;
 }
 
-function collectActions(properties, actions = new Set()) {
-	for (const property of properties) {
-		const action = property.typeOptions?.buttonConfig?.action;
-		if (typeof action === 'string') actions.add(action);
-		for (const option of property.options ?? []) {
-			if (option.values) collectActions(option.values, actions);
-		}
-	}
-	return actions;
-}
-
 describe('versioned wrapper', () => {
 	it('exposes v1 and v1.1 with the same node name', () => {
 		const wrapper = new SqlChatMemory();
@@ -86,29 +75,27 @@ describe('V11', () => {
 		assert.equal(mode.default, 'table');
 	});
 
-	it('shows one copy button per mode page', () => {
-		const mappingButton = description.properties.find((p) => p.name === 'copyMappingPrompt');
-		const sqlButton = description.properties.find((p) => p.name === 'copySqlPrompt');
-		assert.equal(mappingButton.type, 'button');
-		assert.equal(sqlButton.type, 'button');
-		assert.deepEqual(mappingButton.displayOptions.show, { mode: ['table'] });
-		assert.deepEqual(sqlButton.displayOptions.show, { mode: ['sql'] });
-		assert.equal(mappingButton.typeOptions.buttonConfig.action, 'buildMappingPrompt');
-		assert.equal(sqlButton.typeOptions.buttonConfig.action, 'buildSqlPrompt');
+	it('shows static copy-paste prompt notices (no buttons: editor drops string actions)', () => {
+		const mappingNotice = description.properties.find((p) => p.name === 'mappingPromptNotice');
+		const sqlNotice = description.properties.find((p) => p.name === 'sqlPromptNotice');
+		assert.equal(mappingNotice.type, 'notice');
+		assert.equal(sqlNotice.type, 'notice');
+		assert.match(mappingNotice.displayName, /Paste this to any LLM/);
+		assert.match(sqlNotice.displayName, /Paste this to any LLM/);
+		assert.deepEqual(mappingNotice.displayOptions.show, { mode: ['table'] });
+		assert.deepEqual(sqlNotice.displayOptions.show, { mode: ['sql'] });
+		assert.ok(!description.properties.some((p) => p.type === 'button'), 'no button properties');
 	});
 
-	it('every referenced dynamic method exists (n8n CI guard equivalent)', () => {
+	it('every referenced dynamic method exists and no actionHandler remains', () => {
 		const refs = collectDynamicRefs(description.properties);
-		const actions = collectActions(description.properties);
 		for (const name of refs.loadOptions) {
 			assert.equal(typeof node.methods.loadOptions[name], 'function', `loadOptions.${name}`);
 		}
 		for (const name of refs.search) {
 			assert.equal(typeof node.methods.listSearch[name], 'function', `listSearch.${name}`);
 		}
-		for (const name of actions) {
-			assert.equal(typeof node.methods.actionHandler[name], 'function', `actionHandler.${name}`);
-		}
-		assert.ok(refs.loadOptions.size > 0 && refs.search.size > 0 && actions.size > 0);
+		assert.equal(node.methods.actionHandler, undefined);
+		assert.ok(refs.loadOptions.size > 0 && refs.search.size > 0);
 	});
 });
