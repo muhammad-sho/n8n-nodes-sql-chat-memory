@@ -1,28 +1,30 @@
 # SQL Chat Memory for n8n
 
-This node gives your AI Agent **memory of past conversations** by loading chat history from PostgreSQL. It only reads data — it never saves anything.
+This node gives your AI Agent **memory of past conversations stored in your own PostgreSQL table**.
 
 ## The problem it solves
 
-By default, an n8n AI Agent forgets everything after each run. If you store your chat history in PostgreSQL (from a previous workflow, an app, a database, etc.), this node reads that history and feeds it to the agent so it can continue the conversation.
+n8n ships a built-in Postgres Chat Memory node, but it only works with **its own table and its own column schema**. If your chat history already lives in a table with different column names, types, or layout (from an app, a CRM, a custom schema, etc.), that built-in node cannot read it.
+
+This node bridges that gap: **point at any existing table, map its columns, and the AI Agent gets the history in the form it understands.** No migration, no renaming columns, no rewriting your schema.
 
 ## How it works
 
 ```
-Your stored history (PostgreSQL)
+Your existing history table (any columns, any shape)
         ↓
-   SQL Chat Memory
+   SQL Chat Memory  (maps your columns → user/assistant/system messages)
         ↓
    AI Agent  →  remembers the conversation
         ↓
    AI response
         ↓
-   You save the new message yourself (INSERT)
+   You save the new message yourself (INSERT into your own table)
 ```
 
-This node **only reads**. Saving new messages is your responsibility — add a downstream `INSERT` or use a separate node.
+This node **only reads**. It never saves, inserts, updates, or deletes anything. You store new messages yourself.
 
-## Quick setup (3 steps)
+## Quick setup
 
 1. **Connect** the node's **Memory** output to your AI Agent's **Memory** input.
 2. **Configure** one of the two modes below (Table Mapping or Custom Query).
@@ -32,7 +34,7 @@ This node **only reads**. Saving new messages is your responsibility — add a d
 
 ### Option A — Table Mapping (no SQL)
 
-Point at a table and map its columns in the UI. Good if your history table is simple.
+Point at an existing table and map its columns in the UI. Best for straightforward tables.
 
 Fields, top to bottom:
 
@@ -71,6 +73,7 @@ The SQL page ends with a guidance box showing this same JSON format.
 - Does not create tables or manage sessions.
 - Does not poll or run in the background.
 - Does not guess roles — you map them explicitly.
+- Does not require you to change your existing table schema.
 
 ## Debugging
 
