@@ -1,52 +1,54 @@
-# SQL Chat Memory (n8n node)
+# SQL Chat Memory for n8n
 
-Read-only AI Chat Memory for n8n. Loads past conversation turns from PostgreSQL and hands them to an AI Agent so it remembers the conversation.
+This node gives your AI Agent **memory of past conversations** by loading chat history from PostgreSQL. It only reads data — it never saves anything.
 
-This node **only reads**. It never saves, inserts, updates, or deletes anything. You store new messages yourself (for example, with a downstream `INSERT`).
+## The problem it solves
 
-## What you do with it
+By default, an n8n AI Agent forgets everything after each run. If you store your chat history in PostgreSQL (from a previous workflow, an app, a database, etc.), this node reads that history and feeds it to the agent so it can continue the conversation.
 
-1. Add the node to your workflow.
-2. Connect its **Memory** output to your AI Agent's **Memory** input.
-3. Configure how to load history (point at a table, or write your own SQL).
-4. Run the workflow — the agent receives the loaded history as chat messages.
+## How it works
 
-## Connection
+```
+Your stored history (PostgreSQL)
+        ↓
+   SQL Chat Memory
+        ↓
+   AI Agent  →  remembers the conversation
+        ↓
+   AI response
+        ↓
+   You save the new message yourself (INSERT)
+```
 
-- Pure AI sub-node: **no Main input/output**. Data context (for example `{{ $json.sessionId }}`) reaches it through the AI Agent connection.
-- Uses the standard n8n **Postgres** credential.
-- Output: **Memory** (connect to the AI Agent's Memory input).
+This node **only reads**. Saving new messages is your responsibility — add a downstream `INSERT` or use a separate node.
 
-## How history is loaded
+## Quick setup (3 steps)
 
-Each database row becomes one chat message:
+1. **Connect** the node's **Memory** output to your AI Agent's **Memory** input.
+2. **Configure** one of the two modes below (Table Mapping or Custom Query).
+3. **Run** — the agent receives the loaded history as chat messages.
 
-| `role` value | becomes |
-|---|---|
-| `user` | a message from the person |
-| `assistant` | a message from the AI |
-| `system` | an instruction/system message |
+## Two ways to load history
 
-You choose how to load history:
+### Option A — Table Mapping (no SQL)
 
-- **Table Mapping** — pick a table and map its columns in the UI. No SQL needed.
-- **Custom Query** — write your own `SELECT` for full control (filtering, joins, building the message text in SQL).
+Point at a table and map its columns in the UI. Good if your history table is simple.
 
-## Table Mapping mode
+Fields, top to bottom:
 
-Six fields, top to bottom:
-
-1. **Schema** and **Table** — pick from the lists, or type a name.
+1. **Schema** and **Table** — pick from the list, or type a name.
 2. **Session Column** + **Session ID** — the column that groups messages into one conversation, and the value for the current one (for example `{{ $json.sessionId }}`). Leave the column empty if the whole table is one conversation.
 3. **Order Column** — the date or number column that puts messages in order. Leave empty to detect it automatically. The newest messages are always loaded.
-4. **Role Column** (required) + **Role Mappings** — the column that says who wrote each message. Match every value there to `user`, `assistant`, or `system`. Unmatched values stop the run and name the value — nothing is guessed.
+4. **Role Column** (required) + **Role Mappings** — the column that says who wrote each message. Match every value to `user`, `assistant`, or `system`. Unmatched values stop the run and name the value — nothing is guessed.
 5. **Max Messages** — how many past messages to load (1–1000, default 50).
 
 The lists load only while you set up the node, never during a run.
 
-## Custom Query mode
+### Option B — Custom Query (advanced)
 
-Only the **SQL Query** field. Write whatever you need, as long as each result row looks like this:
+Write your own `SELECT`. Use this for filtering, joins, or building the message text in SQL.
+
+Each result row must look like this:
 
 ```json
 [
@@ -63,27 +65,16 @@ Only the **SQL Query** field. Write whatever you need, as long as each result ro
 
 The SQL page ends with a guidance box showing this same JSON format.
 
-## Intended workflow
+## What the node does NOT do
 
-```
-Incoming message
-    ↓
-SQL Chat Memory ──────┐
-                      ↓
-                   AI Agent
-                      ↓
-                 AI response
-                      ↓
-             normal workflow nodes
-                      ↓
-             your own database INSERT
-```
-
-Persist new turns with your own downstream `INSERT`. This node only reads.
+- Does not save, insert, update, or delete messages.
+- Does not create tables or manage sessions.
+- Does not poll or run in the background.
+- Does not guess roles — you map them explicitly.
 
 ## Debugging
 
-After an AI Agent run, open the SQL Chat Memory sub-node (or the agent's execution log). The exact messages handed to the AI are recorded there as `{ role, content }` rows — the same shape as the Custom Query output. The node stays a pure memory sub-node with no Main input/output.
+After an AI Agent run, open the SQL Chat Memory sub-node (or the agent's execution log). The exact messages handed to the AI are recorded there as `{ role, content }` rows — the same shape as the Custom Query output.
 
 ## Versions
 
