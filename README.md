@@ -1,56 +1,57 @@
 # SQL Chat Memory for n8n
 
-This node gives your AI Agent **memory of past conversations stored in your own PostgreSQL table**.
+Give your AI Agent memory of past conversations — **read straight from your existing PostgreSQL table**, whatever its shape.
 
 ## The problem it solves
 
-n8n ships a built-in Postgres Chat Memory node, but it only works with **its own table and its own column schema**. If your chat history already lives in a table with different column names, types, or layout (from an app, a CRM, a custom schema, etc.), that built-in node cannot read it.
+n8n's built-in Postgres Chat Memory only works with **its own table and its own columns**. If your chat history already lives somewhere else — an app's `messages` table, a CRM, a custom schema — that node can't read it.
 
-This node bridges that gap: **point at any existing table, map its columns, and the AI Agent gets the history in the form it understands.** No migration, no renaming columns, no rewriting your schema.
+This node connects to that table as it is. You point at the table, map its columns, and the AI Agent receives a normal conversation history. **No migration, no renaming, no schema changes.**
 
-## How it works
+For example, a table that looks nothing like n8n's format:
+
+| id | chat_id | sender  | body              | sent_at  |
+|----|---------|---------|-------------------|----------|
+| 1  | abc     | visitor | Where is my order?| 10:00    |
+| 2  | abc     | bot     | Let me check.     | 10:01    |
+
+…becomes `visitor → user`, `bot → assistant`, and the rows are handed to the agent oldest first.
+
+## Installation
+
+In n8n: **Settings → Community nodes → Install**, then enter:
 
 ```
-Your existing history table (any columns, any shape)
-        ↓
-   SQL Chat Memory  (maps your columns → user/assistant/system messages)
-        ↓
-   AI Agent  →  remembers the conversation
-        ↓
-   AI response
-        ↓
-   You save the new message yourself (INSERT into your own table)
+n8n-nodes-sql-chat-memory
 ```
 
-This node **only reads**. It never saves, inserts, updates, or deletes anything. You store new messages yourself.
+Requires a **Postgres credential** (the standard n8n one). SSH Tunnel must be disabled for this credential — it isn't supported.
 
-## Quick setup
+## Setup in 3 steps
 
 1. **Connect** the node's **Memory** output to your AI Agent's **Memory** input.
-2. **Configure** one of the two modes below (Table Mapping or Custom Query).
-3. **Run** — the agent receives the loaded history as chat messages.
+2. **Choose a mode** and fill in the fields (see below).
+3. **Run** the workflow — the agent receives the history as chat messages.
 
-## Two ways to load history
+This is a pure memory sub-node: it has no Main input/output. Data for expressions (like `{{ $json.sessionId }}`) comes from the AI Agent connection.
 
-### Option A — Table Mapping (no SQL)
+## Mode A — Table Mapping (no SQL)
 
-Point at an existing table and map its columns in the UI. Best for straightforward tables.
+Use this when your table has a column for the message text and a column that says who sent it.
 
-Fields, top to bottom:
-
-1. **Schema** and **Table** — pick from the list, or type a name.
+1. **Schema** and **Table** — pick from the list, or type the name.
 2. **Session Column** + **Session ID** — the column that groups messages into one conversation, and the value for the current one (for example `{{ $json.sessionId }}`). Leave the column empty if the whole table is one conversation.
-3. **Order Column** — the date or number column that puts messages in order. Leave empty to detect it automatically. The newest messages are always loaded.
+3. **Order Column** — the date or number column that puts messages in order. Leave empty to detect it automatically. The newest messages are loaded.
 4. **Role Column** (required) + **Role Mappings** — the column that says who wrote each message. Match every value to `user`, `assistant`, or `system`. Unmatched values stop the run and name the value — nothing is guessed.
 5. **Max Messages** — how many past messages to load (1–1000, default 50).
 
-The lists load only while you set up the node, never during a run.
+The text of each message is taken from the table's text column automatically. The dropdown lists are read only while you set up the node — never during a run.
 
-### Option B — Custom Query (advanced)
+## Mode B — Custom Query (advanced)
 
-Write your own `SELECT`. Use this for filtering, joins, or building the message text in SQL.
+Use this when you need filtering, joins, or to build the message text in SQL.
 
-Each result row must look like this:
+Write a `SELECT` that returns rows in this form:
 
 ```json
 [
@@ -59,30 +60,29 @@ Each result row must look like this:
 ]
 ```
 
-- `role` must be one of `user`, `assistant`, or `system`.
-- Load the newest X messages, but return them oldest first.
-- You can use expressions like `{{ $json.sessionId }}`.
-- Only `SELECT` (or `WITH ... SELECT`) is allowed. The query is checked for writes, including writes hidden inside `WITH` clauses.
-- Missing `role`/`content` or an unsupported `role` gives a clear error.
+- `role` must be `user`, `assistant`, or `system`.
+- Load the newest messages, but return them **oldest first**.
+- Expressions are allowed, e.g. `{{ $json.sessionId }}`.
+- Only `SELECT` (or `WITH ... SELECT`) is allowed. Writes are blocked, including ones hidden inside `WITH`.
+- Missing `role`/`content` or an unsupported `role` produces a clear error.
 
-The SQL page ends with a guidance box showing this same JSON format.
+The SQL page ends with a guidance box showing this same format.
 
-## What the node does NOT do
+## What this node does not do
 
-- Does not save, insert, update, or delete messages.
-- Does not create tables or manage sessions.
-- Does not poll or run in the background.
-- Does not guess roles — you map them explicitly.
-- Does not require you to change your existing table schema.
+- It never saves, updates, or deletes — saving new messages is up to you (add your own `INSERT` step after the agent replies).
+- It doesn't create tables or manage sessions.
+- It doesn't run in the background or poll.
+- It doesn't guess roles — you map them.
 
 ## Debugging
 
-After an AI Agent run, open the SQL Chat Memory sub-node (or the agent's execution log). The exact messages handed to the AI are recorded there as `{ role, content }` rows — the same shape as the Custom Query output.
+After an agent run, open the SQL Chat Memory sub-node (or the agent's execution log). The exact messages handed to the AI are listed there as `{ role, content }` rows — the same shape as the Custom Query output.
 
 ## Versions
 
-- **v1** (npm 0.1.0): SQL-only sub-node, frozen unchanged.
-- **v1.1** (npm 0.2.x–0.4.5): Table Mapping UI plus Custom Query. Existing v1 workflows keep working untouched. Any table or column name works — identifiers are quoted and never judged against examples.
+- **v1** (npm 0.1.0): SQL-only, frozen unchanged.
+- **v1.1** (npm 0.2.x–0.4.5): Table Mapping plus Custom Query. Existing v1 workflows keep working untouched.
 
 ## Development
 
@@ -92,10 +92,9 @@ npm run build
 npm test
 ```
 
-## Releasing (publish to npm via GitHub Actions)
+## Releasing
 
-1. Push to GitHub (`main` branch).
-2. Repo **Settings → Secrets and variables → Actions** holds `NPM_TOKEN` (npm Automation token).
-3. Bump `version` in `package.json` for every release (npm rejects re-publishing a version).
-4. Create a GitHub **Release** (tag like `v0.4.0`). Publishing runs automatically (`npm publish --access public`).
-5. Install in n8n via **Settings → Community nodes → Install**: `n8n-nodes-sql-chat-memory`.
+1. Push to GitHub (`main`).
+2. The repo's **Settings → Secrets and variables → Actions** holds `NPM_TOKEN` (npm automation token).
+3. Bump `version` in `package.json` for every release — npm rejects re-publishing a version.
+4. Create a GitHub **Release** (tag like `v0.4.5`); publishing runs automatically.
